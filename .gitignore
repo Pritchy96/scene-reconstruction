@@ -1,5 +1,4 @@
 #Ignore executables
-bin/*
 
 #Ignore build and lib dirs
 main.code-workspace

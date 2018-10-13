@@ -6,7 +6,6 @@ BUILD_DIR := ./build
 TARGET_DIR := ./bin
 LIBRARY_DIR := ./lib
 
-
 LIBS := -lGL -lGLU -lglfw -lX11 -lXxf86vm -lXrandr -lpthread -lXi -lGLEW -lopencv_stitching\
  -lopencv_superres -lopencv_videostab -lopencv_aruco -lopencv_bgsegm -lopencv_bioinspired\
   -lopencv_ccalib -lopencv_dnn_objdetect -lopencv_dpm -lopencv_face -lopencv_photo\
@@ -20,17 +19,13 @@ LIBS := -lGL -lGLU -lglfw -lX11 -lXxf86vm -lXrandr -lpthread -lXi -lGLEW -lopenc
 		  -lboost_system -lboost_filesystem -L$(LIBRARY_DIR) -lgl_framework
 
 
-MAINS := $(BUILD_DIR)/main.o $(BUILD_DIR)/glfw-test.o
+MAINS := $(BUILD_DIR)/main.o
 SRC_FILES := $(wildcard $(SRC_DIR)/*.cpp)
 OBJ_FILES := $(filter-out $(MAINS), $(patsubst $(SRC_DIR)/%.cpp,$(BUILD_DIR)/%.o,$(SRC_FILES)))
 
 all: $(MAINS) #This currently makes './build/blah.o', not 'blah'
 
 main: $(OBJ_FILES) $(BUILD_DIR)/main.o
-	$(CC) $(CXXFLAGS) -o $(TARGET_DIR)/$@ $(LIBS) $^
-	cp -r $(SRC_DIR)/shaders $(TARGET_DIR)
-
-glfw-test: $(OBJ_FILES) $(BUILD_DIR)/glfw-test.o
 	$(CC) $(CXXFLAGS) -o $(TARGET_DIR)/$@ $(LIBS) $^
 	cp -r $(SRC_DIR)/shaders $(TARGET_DIR)
 
