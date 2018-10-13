@@ -1,6 +1,12 @@
 CC := g++
 CXXFLAGS := -Wall -std=c++11 -MMD -MP
 
+SRC_DIR := ./src
+BUILD_DIR := ./build
+TARGET_DIR := ./bin
+LIBRARY_DIR := ./lib
+
+
 LIBS := -lGL -lGLU -lglfw -lX11 -lXxf86vm -lXrandr -lpthread -lXi -lGLEW -lopencv_stitching\
  -lopencv_superres -lopencv_videostab -lopencv_aruco -lopencv_bgsegm -lopencv_bioinspired\
   -lopencv_ccalib -lopencv_dnn_objdetect -lopencv_dpm -lopencv_face -lopencv_photo\
@@ -11,11 +17,8 @@ LIBS := -lGL -lGLU -lglfw -lX11 -lXxf86vm -lXrandr -lpthread -lXi -lGLEW -lopenc
 	   -lopencv_xfeatures2d -lopencv_shape -lopencv_video -lopencv_ml -lopencv_ximgproc -lopencv_calib3d\
 	    -lopencv_features2d -lopencv_highgui -lopencv_videoio -lopencv_flann -lopencv_xobjdetect\
 		 -lopencv_imgcodecs -lopencv_objdetect -lopencv_xphoto -lopencv_imgproc -lopencv_core -lhdf5\
-		  -lboost_system -lboost_filesystem
+		  -lboost_system -lboost_filesystem -L$(LIBRARY_DIR) -lgl_framework
 
-SRC_DIR := ./src
-BUILD_DIR := ./build
-TARGET_DIR := ./bin
 
 MAINS := $(BUILD_DIR)/main.o $(BUILD_DIR)/glfw-test.o
 SRC_FILES := $(wildcard $(SRC_DIR)/*.cpp)
