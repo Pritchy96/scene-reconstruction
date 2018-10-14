@@ -19,6 +19,7 @@
             Renderable(GLuint Shader);
             Renderable(GLuint Shader, vector<glm::vec3> vert_data);
             Renderable(GLuint Shader, vector<glm::vec3> vert_data, vector<glm::vec3> colour_data);
+            Renderable(GLuint Shader, vector<glm::vec3> vert_data, vector<glm::vec3> colour_data, GLenum RenderType);
 
             virtual ~Renderable() {}
 
@@ -28,8 +29,10 @@
 
             vector<vec3> vertexes, colours;
 	        GLuint pos_vbo, col_vbo, vao, shader;
+            GLenum renderType = GL_POINTS;
             glm::mat4 modelMatrix = glm::mat4(1.0f);
             glm::mat4 scaleMatrix = glm::scale(glm::vec3(10.0, 10.0, 10.0));
+            
 
             bool validVAO = false, isDead = false;
     };
