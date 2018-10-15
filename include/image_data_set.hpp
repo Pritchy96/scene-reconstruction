@@ -6,11 +6,11 @@ using namespace std;
     class ImageDataSet {
         public:
             ImageData *image1, *image2;
-            vector<cv::Point2f> points1, points2;
+            vector<cv::Point2f> points1, points2;   //TODO: Rename these to something more appropriate.
             glm::mat4 relativeTransformation;
             vector<cv::DMatch> goodMatches;
+            vector<glm::vec3> pointCloud;
             cv::Mat img_matches;
-            vector<float> image1PointLines, image1PointColours, image2PointLines, image2PointColours, cubePoints;
             bool valid = true;
 
             ImageDataSet(ImageData *img1, ImageData *img2);
@@ -21,5 +21,6 @@ using namespace std;
                 const cv::Mat& image2, cv::Mat fundamentalMat,
                 vector<cv::Point2f>& points1, vector<cv::Point2f>& points2, 
                 int whichImage);
+            void TriangulatePoints();
     };
 #endif

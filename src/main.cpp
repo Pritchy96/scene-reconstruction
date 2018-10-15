@@ -96,22 +96,30 @@ int main(int argc, const char* argv[]) {
         previousImage = currentImage;
     }
 
+    cout << "Camera Positions: " << endl;
     for (vector<glm::vec3>::const_iterator itr = cameraPosesToRender.begin(); itr != cameraPosesToRender.end(); ++itr) {
         cout << glm::to_string(*itr) << endl;
     }
 
-    renderEnvironment *renderer = new renderEnvironment();
-    cout << "Initialised renderer" << endl;
-        	
-    GLuint basicShader = Shader::LoadShaders("./bin/shaders/basic.vertshader", "./bin/shaders/basic.fragshader");
-	renderer->addRenderable(new Renderable(basicShader, cameraPosesToRender, cameraPosesToRender, GL_POINTS));
 
-    while (true) {  //TODO: Write proper update & exit logic.
-		oldTime = newTime;
-    	newTime = chrono::steady_clock::now();
-		deltaT = chrono::duration_cast<chrono::milliseconds>(newTime - oldTime).count();
-
-        renderer->update(deltaT);
+    cout << "Camera Poses: " << endl;
+    cout << glm::to_string(imageSets[0]->image1->worldTransformation) << endl;
+    for (vector<ImageDataSet*>::const_iterator itr = imageSets.begin(); itr != imageSets.end(); ++itr) {
+        cout << glm::to_string((*itr)->image2->worldTransformation) << endl;
     }
+
+    renderEnvironment *renderer = new renderEnvironment();
+    // cout << "Initialised renderer" << endl;
+        	
+    // GLuint basicShader = Shader::LoadShaders("./bin/shaders/basic.vertshader", "./bin/shaders/basic.fragshader");
+	// renderer->addRenderable(new Renderable(basicShader, cameraPosesToRender, cameraPosesToRender, GL_POINTS));
+
+    // while (true) {  //TODO: Write proper update & exit logic.
+	// 	oldTime = newTime;
+    // 	newTime = chrono::steady_clock::now();
+	// 	deltaT = chrono::duration_cast<chrono::milliseconds>(newTime - oldTime).count();
+
+    //     renderer->update(deltaT);
+    // }
     return 0;
 }

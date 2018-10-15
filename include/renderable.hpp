@@ -33,7 +33,6 @@
             glm::mat4 modelMatrix = glm::mat4(1.0f);
             glm::mat4 scaleMatrix = glm::scale(glm::vec3(10.0, 10.0, 10.0));
             
-
             bool validVAO = false, isDead = false;
     };
 
