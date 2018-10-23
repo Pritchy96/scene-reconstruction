@@ -21,6 +21,8 @@
 #include "../include/render_environment.hpp"
 #include "../include/shader.hpp"
 
+#include <cvsba/cvsba.h>
+
 using namespace std;
 using namespace boost;
 
@@ -107,6 +109,33 @@ int main(int argc, const char* argv[]) {
     for (vector<ImageDataSet*>::const_iterator itr = imageSets.begin(); itr != imageSets.end(); ++itr) {
         cout << glm::to_string((*itr)->image2->worldTransformation) << endl;
     }
+
+    //  * @param  points N x 3 object points
+    //  * @param  imagePoints M x N x 2 image points for each camera and each points. The outer  vector has M elements and each element has N elements of Point2d .
+    //  * @param  visibility M x N x 1 visibility matrix, the element [i][j] = 1 when object point i is visible from camera j and 0 if not.
+    //  * @param  cameraMatrix M x 3 x 3 camera matrix (intrinsic parameters) 3 x 3 camera matrix for each image
+    //  * @param  distCoeffs M x   5  x1  distortion coefficient  for each image
+    //  * @param R  M x 3 x 3 rotation matrix  for each image
+    //  * @param T M x 3 x 1 translation matrix  for each image
+
+    std::vector<cv::Point3f> points3D;    //3D Points
+    std::vector<std::vector<cv::Point2f> >  imagePoints;    //List of a list of each images points
+    std::vector<std::vector<int> > visibility;  //for each image, is each 3D 
+    std::vector<cv::Mat> cameraMatrix;  //The intrinsic matrix for each camera.
+    std::vector<cv::Mat> cameraRotations;
+    std::vector<cv::Mat> cameraTranslations;
+    std::vector<cv::Mat> distortionCoeffs;
+
+
+
+    /*
+        create new image_data_set
+        add key features for new image to imagePoints
+        triangulate points for new image_data_set
+        for each newly triangulated point, check for point tracks
+        if point track exists, add 
+    */
+
 
     renderEnvironment *renderer = new renderEnvironment();
     // cout << "Initialised renderer" << endl;
