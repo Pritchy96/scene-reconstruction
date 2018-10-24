@@ -129,8 +129,25 @@ int main(int argc, const char* argv[]) {
 
 
     /*
-        create new image_data_set
-        add key features for new image to imagePoints
+        create new image_data_set, detecting points
+        for each key feature in the new image
+            add to imagePoints
+            if it exists in the last image pair, it's part of a point track
+                add to point track
+            else
+                triangulate point 
+                add point
+                 
+
+        create new image_data_set, detecting points
+        for each key feature in the new image
+            add to imagePoints
+            if it is part of a point track
+                add to point track
+            else
+                triangulate point 
+                add point
+
         triangulate points for new image_data_set
         for each newly triangulated point, check for point tracks
         if point track exists, add 
