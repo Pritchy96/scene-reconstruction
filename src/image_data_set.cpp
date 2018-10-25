@@ -1,5 +1,6 @@
 #include <iostream>
 #include <vector>
+#include <map>
 
 #include <opencv2/core/core.hpp>
 #include <opencv2/highgui/highgui.hpp>
@@ -61,7 +62,7 @@ ImageDataSet::ImageDataSet(ImageData *img1, ImageData *img2) {
     
     image1 = img1; image2 = img2;
 
-    FindMatchingFeatures(true);
+    FindMatchingFeatures(false);
     relativeTransformation = EstimateRelativePose();
 
     if (!valid) {return;} //No Essential Matrix found.
@@ -76,14 +77,14 @@ ImageDataSet::ImageDataSet(ImageData *img1, ImageData *img2) {
         image2->worldTransformation = -image1->worldTransformation * relativeTransformation;
     }
 
-    cout << "entering TriangulatePoints" << endl;
-    TriangulatePoints();
+    // cout << "entering TriangulatePoints" << endl;
+    // TriangulatePoints();
 
-    cout << "exiting TriangulatePoints" << endl;
+    // cout << "exiting TriangulatePoints" << endl;
 
-    for (vector<glm::vec3>::const_iterator itr = pointCloud.begin(); itr != pointCloud.end(); ++itr) {
-        cout << glm::to_string(*itr) << endl;
-    }
+    // for (vector<glm::vec3>::const_iterator itr = pointCloud.begin(); itr != pointCloud.end(); ++itr) {
+    //     cout << glm::to_string(*itr) << endl;
+    // }
 } 
 
 void ImageDataSet::FindMatchingFeatures(bool displayResults) {
@@ -140,7 +141,7 @@ glm::mat4 ImageDataSet::EstimateRelativePose() {
     return glm_rt;
 }
 
-void ImageDataSet::TriangulatePoints() {
+vector<cv::Point3f> ImageDataSet::TriangulatePoints(vector<cv::Point2f> image1Points, vector<cv::Point2f> image2Points) {
     //Convert the glm::mat4 world transform to a cv::mat3x4. 
     //TODO: Should we store it as this by default?
     cv::Mat image1WorldTransform3x4(3, 4, CV_64F), image2WorldTransform3x4(3, 4, CV_64FC1), image1WorldTransform, image2WorldTransform;
@@ -155,27 +156,24 @@ void ImageDataSet::TriangulatePoints() {
     image1->cameraIntrinsic.convertTo(cameraIntrinsicDouble, CV_64F);
     cv::Mat image0RelativeTransformation = cv::Mat::eye(3, 4, CV_64FC1), i1wtdouble;
     image1WorldTransform3x4.convertTo(i1wtdouble, CV_64F);
-    cv::Mat points3D;   
-    cv::triangulatePoints(cameraIntrinsicDouble * image0RelativeTransformation, cameraIntrinsicDouble * i1wtdouble, points1, points2, points3D);
+
+    cv::Mat points;
+    cv::triangulatePoints(cameraIntrinsicDouble * image0RelativeTransformation, cameraIntrinsicDouble * i1wtdouble, image1Points, image2Points, points);
     
     //DEBUG
-    cout << "Camera1 Position: " << image1WorldTransform << endl;
-    cout << "Camera2 Position: " << image2WorldTransform << endl;
-    cout << "Points3d: " << points3D << endl;
+    // cout << "Camera1 Position: " << image1WorldTransform << endl;
+    // cout << "Camera2 Position: " << image2WorldTransform << endl;
+    // cout << "points: " << points << endl;
 
-    for (int i = 0; i < points3D.cols; i++) {
-        cv::Mat p3d;
-        convertPointsFromHomogeneous(points3D.col(i).t(), p3d);
-
-        //TODO: These values are being copied in incorrectly.
-        glm::vec3 point = *new glm::vec3{point.x = (float) (p3d.at<double>(0)),
-                                            point.y = (float) (p3d.at<double>(1)),
-                                            point.z = (float) (p3d.at<double>(2))};
-
-        cout << "x: " << p3d.at<double>(0) << ", y: " << p3d.at<double>(1) << ", z: " << p3d.at<double>(2) << endl;
-        cout << "x: " << point.x << ", y: " << point.y<< ", z: " << point.z << endl << endl;
-        pointCloud.push_back(point);
+    vector<cv::Point3f> points3D;
+    for (int i = 0; i < points.cols; i++) {
+        vector<cv::Point3f> p3d;
+        convertPointsFromHomogeneous(points.col(i).t(), p3d);
+        // cout << "x: " << point.x << ", y: " << point.y<< ", z: " << point.z << endl << endl;
+        points3D.insert(points3D.end(), p3d.begin(), p3d.end());
     }
+
+    return points3D;
 }
 
 void ImageDataSet::DisplayMatches() {

@@ -1,6 +1,10 @@
 #ifndef IMAGEDATASET_HPP
 #define IMAGEDATASET_HPP
 
+#include <map>
+#include "../include/point2fCompare.hpp"
+
+
 using namespace std;
 
     class ImageDataSet {
@@ -10,6 +14,7 @@ using namespace std;
             glm::mat4 relativeTransformation;
             vector<cv::DMatch> goodMatches;
             vector<glm::vec3> pointCloud;
+            std::map<cv::Point2f, int> visibilityLocations; //TODO: rename
             cv::Mat img_matches;
             bool valid = true;
 
@@ -21,6 +26,6 @@ using namespace std;
                 const cv::Mat& image2, cv::Mat fundamentalMat,
                 vector<cv::Point2f>& points1, vector<cv::Point2f>& points2, 
                 int whichImage);
-            void TriangulatePoints();
+            vector<cv::Point3f> TriangulatePoints(vector<cv::Point2f> image1Points, vector<cv::Point2f> image2Points);
     };
 #endif
