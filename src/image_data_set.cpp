@@ -59,22 +59,24 @@ void fromGLM2CV(const glm::mat4& glmmat, cv::Mat* cvmat) {
 
 ImageDataSet::ImageDataSet(ImageData *img1, ImageData *img2) {
     //https://docs.opencv.org/3.1.0/d5/d6f/tutorial_feature_flann_matcher.html
+    cout << "ImageDataSet constructor" << endl;
+
     
     image1 = img1; image2 = img2;
 
-    FindMatchingFeatures(false);
-    relativeTransformation = EstimateRelativePose();
+    FindMatchingFeatures(true);
+    EstimateRelativePose();
 
     if (!valid) {return;} //No Essential Matrix found.
 
     //Calculate image2 world transform.
-    if (image1->worldTransformation == glm::mat4(1.0f)) {
+    if (cv::countNonZero(image1->worldTransformation) == 0) {
         //If we're on the first image (no world tranform for previous image), then worldTransform = relativeTransform.
         image2->worldTransformation = relativeTransformation;
     } else {
         //Otherwise, the world tranform is the sum translation of all previous relative transforms to get the world transform of image1
         //..plus the relative transform to get from image1 to image2
-        image2->worldTransformation = -image1->worldTransformation * relativeTransformation;
+        image2->worldTransformation = (cv::Mat(image1->worldTransformation) * relativeTransformation);
     }
 
     // cout << "entering TriangulatePoints" << endl;
@@ -114,7 +116,7 @@ void ImageDataSet::FindMatchingFeatures(bool displayResults) {
     if (displayResults) DisplayMatches(); 
 }
 
-glm::mat4 ImageDataSet::EstimateRelativePose() {
+void ImageDataSet::EstimateRelativePose() {
     cv::Mat essentialMat = cv::findEssentialMat(cv::Mat(points1), cv::Mat(points2), image1->cameraIntrinsic, cv::RANSAC, 0.99899999, 0.1f, cv::noArray());
     //cv::Mat fundamentalMat = cv::findFundamentalMat(cv::Mat(points1), cv::Mat(points2), cv::FM_RANSAC);
 
@@ -122,7 +124,8 @@ glm::mat4 ImageDataSet::EstimateRelativePose() {
     if (essentialMat.cols != 3 || essentialMat.rows != 3) {
         cout << "Not enough matched points to derive EssentialMatrix" << endl;
         valid = false;
-        return glm::mat4(0.0f); //TODO: check this code path.
+        relativeTransformation = cv::Mat::eye(3, 4, CV_64F); //TODO: check this code path.
+        return;
     }
 
     cv::Mat cvRotation, cvTranslation;
@@ -131,31 +134,20 @@ glm::mat4 ImageDataSet::EstimateRelativePose() {
     cv::recoverPose(essentialMat, points1, points2, image1->cameraIntrinsic, cvRotation, cvTranslation);
 
     //Construct a transformation mat from a translation and a rotation mat.
-    cv::Mat cv_rt = cv::Mat::eye(4, 4, CV_32FC1);
-    cvRotation.copyTo(cv_rt.rowRange(0,3).colRange(0,3));
-    cvTranslation.copyTo(cv_rt.rowRange(0,3).col(3));
+    cv::Mat transformation = cv::Mat::eye(3, 4, CV_64F);
+    cvRotation.copyTo(transformation.rowRange(0,3).colRange(0,3));
+    cvTranslation.copyTo(transformation.rowRange(0,3).col(3));
 
-    glm::mat4 glm_rt;
-    fromCV2GLM(cv_rt, &glm_rt);
-
-    return glm_rt;
+    relativeTransformation = transformation;
 }
 
 vector<cv::Point3f> ImageDataSet::TriangulatePoints(vector<cv::Point2f> image1Points, vector<cv::Point2f> image2Points) {
-    //Convert the glm::mat4 world transform to a cv::mat3x4. 
-    //TODO: Should we store it as this by default?
-    cv::Mat image1WorldTransform3x4(3, 4, CV_64F), image2WorldTransform3x4(3, 4, CV_64FC1), image1WorldTransform, image2WorldTransform;
-    fromGLM2CV(image1->worldTransformation, &image1WorldTransform);
-    fromGLM2CV(image2->worldTransformation, &image2WorldTransform);
-    memcpy(image1WorldTransform3x4.data, (&image1WorldTransform)->data, 12 * sizeof(float));
-    memcpy(image2WorldTransform3x4.data, (&image2WorldTransform)->data, 12 * sizeof(float));
-
     //This is mostly just data mauling so cv is happy with what we put in triangulatePoints. 
     //TODO: As above, we should probably be storing this data in this format anyway.
     cv::Mat cameraIntrinsicDouble;
-    image1->cameraIntrinsic.convertTo(cameraIntrinsicDouble, CV_64F);
+    cv::Mat(image1->cameraIntrinsic).convertTo(cameraIntrinsicDouble, CV_64F);
     cv::Mat image0RelativeTransformation = cv::Mat::eye(3, 4, CV_64FC1), i1wtdouble;
-    image1WorldTransform3x4.convertTo(i1wtdouble, CV_64F);
+    cv::Mat(image1->worldTransformation).convertTo(i1wtdouble, CV_64F);
 
     cv::Mat points;
     cv::triangulatePoints(cameraIntrinsicDouble * image0RelativeTransformation, cameraIntrinsicDouble * i1wtdouble, image1Points, image2Points, points);

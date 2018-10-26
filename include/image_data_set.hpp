@@ -11,7 +11,7 @@ using namespace std;
         public:
             ImageData *image1, *image2;
             vector<cv::Point2f> points1, points2;   //TODO: Rename these to something more appropriate.
-            glm::mat4 relativeTransformation;
+            cv::Mat4f relativeTransformation;
             vector<cv::DMatch> goodMatches;
             vector<glm::vec3> pointCloud;
             std::map<cv::Point2f, int> visibilityLocations; //TODO: rename
@@ -20,7 +20,7 @@ using namespace std;
 
             ImageDataSet(ImageData *img1, ImageData *img2);
             void DisplayMatches();
-            glm::mat4 EstimateRelativePose();
+            void EstimateRelativePose();
             void FindMatchingFeatures(bool displayResults);
             void DrawEpipolarLines(cv::Mat& image_out, const cv::Mat& image1, 
                 const cv::Mat& image2, cv::Mat fundamentalMat,

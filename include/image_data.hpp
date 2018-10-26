@@ -5,13 +5,14 @@
 
     class ImageData {
         public:
-            cv::Mat image, 
-                cameraIntrinsic,
+            cv::Mat image,
                 image_descriptors;  //Characteristics of the keypoints
+            cv::Matx33f cameraIntrinsic;
             std::vector<cv::KeyPoint> image_keypoints;
-            glm::mat4 worldTransformation;
+            cv::Mat worldTransformation;
             glm::vec3 lineColour;
 
-            ImageData(cv::String imagePath, cv::Mat cameraIntrinsic, glm::vec3 lineCol, glm::mat4 transform = glm::mat4(1.0f));
+            ImageData(cv::String imagePath, cv::Matx33f intrinsicMat, glm::vec3 lineCol, const cv::Mat* transformation);
     };
+
 #endif

@@ -14,14 +14,24 @@
 
 using namespace std;
 
-ImageData::ImageData(cv::String imagePath, cv::Mat intrinsicMat, glm::vec3 lineCol, glm::mat4 transform) {
+ImageData::ImageData(cv::String imagePath, cv::Matx33f intrinsicMat, glm::vec3 lineCol, const cv::Mat* transformation) {
+    cout << "Imagedata constructor" << endl;
     image = cv::imread(imagePath, cv::IMREAD_COLOR);
     cameraIntrinsic = intrinsicMat;
+    cout << "cameraIntrinsic = intrinsicMat;" << endl;
 
     //Detect features in the image.
     cv::Ptr<cv::xfeatures2d::SiftFeatureDetector> detector = cv::xfeatures2d::SiftFeatureDetector::create();
-    detector->detectAndCompute(image, cv::Mat(), image_keypoints, image_descriptors); 
+    cout << "Set up Detector" << endl;
 
-    worldTransformation = transform;
+    detector->detectAndCompute(image, cv::Mat(), image_keypoints, image_descriptors); 
+    cout << "Detected" << endl;
+
+    // cout << "tranformation parameter: " << transformation << endl;
+
+    worldTransformation = *transformation;
+
+    cout << "worldTransformation = transformation;" << endl;
+
     lineColour = lineCol;
 }
