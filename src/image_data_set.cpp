@@ -64,7 +64,7 @@ ImageDataSet::ImageDataSet(ImageData *img1, ImageData *img2) {
     
     image1 = img1; image2 = img2;
 
-    FindMatchingFeatures(true);
+    FindMatchingFeatures(false);
     EstimateRelativePose();
 
     if (!valid) {return;} //No Essential Matrix found.
@@ -76,7 +76,7 @@ ImageDataSet::ImageDataSet(ImageData *img1, ImageData *img2) {
     } else {
         //Otherwise, the world tranform is the sum translation of all previous relative transforms to get the world transform of image1
         //..plus the relative transform to get from image1 to image2
-        image2->worldTransformation = (cv::Mat(image1->worldTransformation) * relativeTransformation);
+        cv::multiply(image1->worldTransformation, relativeTransformation, image2->worldTransformation);
     }
 
     // cout << "entering TriangulatePoints" << endl;
@@ -90,10 +90,12 @@ ImageDataSet::ImageDataSet(ImageData *img1, ImageData *img2) {
 } 
 
 void ImageDataSet::FindMatchingFeatures(bool displayResults) {
-    cv::FlannBasedMatcher matcher;
-    std::vector<cv::DMatch> image_matches;
-    matcher.match(image1->image_descriptors, image2->image_descriptors, image_matches);
 
+    cv::Ptr<cv::DescriptorMatcher> matcher = cv::DescriptorMatcher::create("BruteForce-Hamming");
+    // cv::FlannBasedMatcher matcher;
+    std::vector<cv::DMatch> image_matches;
+    matcher->match(image1->image_descriptors, image2->image_descriptors, image_matches);
+    
     double max_dist = 0; double min_dist = 100;
     //Quick calculation of max and min distances between keypoints
     //Taken from https://docs.opencv.org/3.1.0/d5/d6f/tutorial_feature_flann_matcher.html
@@ -124,7 +126,7 @@ void ImageDataSet::EstimateRelativePose() {
     if (essentialMat.cols != 3 || essentialMat.rows != 3) {
         cout << "Not enough matched points to derive EssentialMatrix" << endl;
         valid = false;
-        relativeTransformation = cv::Mat::eye(3, 4, CV_64F); //TODO: check this code path.
+        relativeTransformation = cv::Matx34f::eye(); //TODO: check this code path.
         return;
     }
 

@@ -38,7 +38,7 @@ float initPose[]{-0.08661715685291285200, 0.97203145042392447000, 0.218294654838
     -0.21441803766270939000, -0.19994795321325870000, -0.23162091782017200000, 0.95203517502501223000, -0.0526034704197, 0.023290917003, 0.659119498846};
 
 //We'd normally assume world origin = intial camera position, but we're given it in the dino dataset, we use it here so we can check other camera poses.
-const cv::Mat initialPose = cv::Mat(3, 4, CV_32F, initPose);
+const cv::Matx34f initialPose = cv::Mat(3, 4, CV_32F, initPose);
  
 
 
@@ -104,7 +104,7 @@ int main(int argc, const char* argv[]) {
     for (vector<filesystem::path>::const_iterator itr = v.begin(); itr != v.end(); ++itr) {
         cv::String filePath = cv::String(filesystem::canonical(*itr).string()); //Get full file path, not relative.
 
-        ImageData *currentImage = new ImageData(filePath, cameraIntrinsic, colour, cv::Mat::zeros(cv::Size(4, 4), CV_64FC1));
+        ImageData *currentImage = new ImageData(filePath, cameraIntrinsic, colour, cv::Matx34f::zeros());
         ImageDataSet *imagePair = new ImageDataSet(previousImage, currentImage);
         imageSets.push_back(imagePair);
 
@@ -194,13 +194,13 @@ int main(int argc, const char* argv[]) {
 
         previousImage = currentImage;
 
-        cout << "visibility " << endl;
-        for (vector<vector<int>>::const_iterator i = visibility.begin(); i != visibility.end(); ++i) {
-            for (vector<int>::const_iterator j = (*i).begin(); j != (*i).end(); ++j) {
-                cout << *j << ", ";
-            }
-        cout << endl;
-        }
+        // cout << "visibility " << endl;
+        // for (vector<vector<int>>::const_iterator i = visibility.begin(); i != visibility.end(); ++i) {
+        //     for (vector<int>::const_iterator j = (*i).begin(); j != (*i).end(); ++j) {
+        //         cout << *j << ", ";
+        //     }
+        // cout << endl;
+        // }
     }
 
     // cout << "points3D " << endl;

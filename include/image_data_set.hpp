@@ -11,7 +11,7 @@ using namespace std;
         public:
             ImageData *image1, *image2;
             vector<cv::Point2f> points1, points2;   //TODO: Rename these to something more appropriate.
-            cv::Mat4f relativeTransformation;
+            cv::Matx34f relativeTransformation;
             vector<cv::DMatch> goodMatches;
             vector<glm::vec3> pointCloud;
             std::map<cv::Point2f, int> visibilityLocations; //TODO: rename
