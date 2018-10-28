@@ -3,6 +3,8 @@
 
 #include <boost/filesystem.hpp>
 
+#include <cvsba/cvsba.h>
+
 #include <opencv2/core/core.hpp>
 #include <opencv2/highgui/highgui.hpp>
 #include <opencv2/xfeatures2d.hpp>
@@ -21,8 +23,6 @@
 #include "../include/image_data_set.hpp"
 #include "../include/render_environment.hpp"
 #include "../include/shader.hpp"
-
-#include <cvsba/cvsba.h>
 
 using namespace std;
 using namespace boost;
@@ -94,7 +94,6 @@ int main(int argc, const char* argv[]) {
     ImageData *previousImage = new ImageData(cv::String(filesystem::canonical(v[0]).string()), cameraIntrinsic,
                                 colour, initialPose);
     v.erase(v.begin());
-    cout << "First imagedata created" << endl;
 
     //TODO: run through method to convert to glm.
     // glm::vec3 cameraPos = (vec4(1.0, 1.0, 1.0, 0.0) * previousImage->worldTransformation).xyz();
@@ -122,25 +121,17 @@ int main(int argc, const char* argv[]) {
         // vector<cv::Mat> cameraTranslations;
         // vector<cv::Mat> distortionCoeffs;
 
-        /*
-        create new image_data_set, detecting points
-        for each key feature in the new image
-            add to imagePoints
-            if it exists in any previous(?) image pair, it's part of a point track
-                add to point track
-            else
-                triangulate point 
-                add point
-        */
-
-        //Push back image 1's points. Image 2's points will be pushed back as next iterations' points1.
-        imagePoints.push_back(imagePair->points1); 
+        imagePoints.push_back(imagePair->points1); //Push back image 1's points. Image 2's points will be pushed back as next iterations' points1.
 
         if (imageSets.size() == 1) {    //If it's the first image pair, all 3D points are new!
-            cout << "imageSets.size() = 1" << endl;
             newPoints = imagePair->TriangulatePoints(imagePair->points1, imagePair->points2);
             points3D.insert(points3D.end(), newPoints.begin(), newPoints.end());
-            
+                        
+            cameraMatrix.push_back(cv::Mat(cameraIntrinsic));    //Camera 1
+            cameraRotations.push_back(cv::Mat(previousImage->worldTransformation).rowRange(0,3).colRange(0,3));
+            cameraTranslations.push_back(cv::Mat(previousImage->worldTransformation).rowRange(0,3).col(3));
+            distortionCoeffs.push_back(cv::Mat::zeros(5, 1, CV_32F));
+                
             for (int i = 0; i < newPoints.size(); i++) {
                 vector<int> cameraVisibilities;
                 cameraVisibilities.push_back(1); //Camera 1
@@ -149,7 +140,6 @@ int main(int argc, const char* argv[]) {
                 imageSets[imageSets.size()-1]->visibilityLocations[imageSets[imageSets.size()-1]->points2[i]] = i; //TODO: This might be wrong. We're assuming triangulated points are returned in the right order..
             }
         } else {
-
             //Start by adding the new camera to the end of each point list in visibility, initialised to point not visible in this image (0)
             for (vector<vector<int>>::iterator pointList = visibility.begin(); pointList != visibility.end(); ++pointList) {
                 (*pointList).push_back(0);
@@ -158,53 +148,69 @@ int main(int argc, const char* argv[]) {
             for (vector<cv::Point2f>::iterator point = imagePair->points1.begin(); point != imagePair->points1.end(); ++point) {
                 std::map<cv::Point2f, int>::iterator visibilityLocation = imageSets[imageSets.size()-2]->visibilityLocations.find(*point);
 
-                // cout << "visibilityLocations for last pair:" << endl;
-                // for(map<cv::Point2f, int>::const_iterator it = imageSets[imageSets.size()-2]->visibilityLocations.begin();
-                //     it != imageSets[imageSets.size()-2]->visibilityLocations.end(); ++it)
-                // {
-                //     std::cout << it->first << endl;
-                // }
-
-                cout << "Trying to find a match for: " << *point << endl; 
+                // cout << "Trying to find a match for: " << *point << endl; 
                 if (visibilityLocation != imageSets[imageSets.size()-2]->visibilityLocations.end()) {
 
-                    cout << "Found a match" << endl;
+                    // cout << "Found a match" << endl;
                     //If the point exists in a previous imageset, then the 3D point has already been added to the list and we should
                     //...append to that visibility list rather than making a new one.
                     imageSets[imageSets.size()-1]->visibilityLocations[*point] = visibilityLocation->second;
                     visibility[visibilityLocation->second][visibility[visibilityLocation->second].size() - 1] = 1;
                 } else { //New point, Only visible in the most recent image pair.
-                    cout << "No Match Found" << endl;
+                    // cout << "No Match Found" << endl;
 
                     vector<int> cameraVisibilities;        
-                    for (int i = 0; i < imageSets.size()-1; i++) 
-                    { 
+                    for (int i = 0; i < imageSets.size()-1; i++) { 
                         cameraVisibilities.push_back(0); 
                     }
                     cameraVisibilities.push_back(1);  //Camera 1
                     cameraVisibilities.push_back(1);  //Camera 2 
                     visibility.push_back(cameraVisibilities);
                 }
+
             }
         }
-        cameraMatrix.push_back(cv::Mat(cameraIntrinsic));    //Camera 1
-        // cameraTranslations.push_back(imageSets[imageSets.size()-1]->image1->worldTransformation.
-
-        cameraMatrix.push_back(cv::Mat(cameraIntrinsic));    //Camera 2 
+        cameraMatrix.push_back(cv::Mat(cameraIntrinsic));    //Camera 2
+        cameraRotations.push_back(cv::Mat(currentImage->worldTransformation).rowRange(0,3).colRange(0,3));
+        cameraTranslations.push_back(cv::Mat(currentImage->worldTransformation).rowRange(0,3).col(3));
+        distortionCoeffs.push_back(cv::Mat::zeros(5, 1, CV_32F));
 
         previousImage = currentImage;
 
-        // cout << "visibility " << endl;
-        // for (vector<vector<int>>::const_iterator i = visibility.begin(); i != visibility.end(); ++i) {
-        //     for (vector<int>::const_iterator j = (*i).begin(); j != (*i).end(); ++j) {
-        //         cout << *j << ", ";
-        //     }
-        // cout << endl;
-        // }
+        // run sba optimization
+        cvsba::Sba sba;
+        cv::TermCriteria criteria(CV_TERMCRIT_ITER + CV_TERMCRIT_EPS, 150, 1e-10);
+        cvsba::Sba::Params params ;
+        params.type = cvsba::Sba::MOTIONSTRUCTURE;
+        params.iterations = 150;
+        params.minError = 1e-10;
+        params.fixedIntrinsics = 5;
+        params.fixedDistortion = 5;
+        params.verbose = true;
+        sba.setParams(params);
+        // sba.run( points3D, imagePoints, visibility, cameraMatrix,  cameraRotations, cameraTranslations, distortionCoeffs);
     }
 
-    // cout << "points3D " << endl;
-    // for (vector<cv::Point3f>::const_iterator itr = points3D.begin(); itr != points3D.end(); ++itr) {
+    //T.size() != distCoeffs.size()  || distCoeffs.size() != visibility.size()
+
+    //  * @param  points N x 3 object points
+    //  * @param  imagePoints M x N x 2 image points for each camera and each points. The outer  vector has M elements and each element has N elements of Point2d .
+    //  * @param  visibility M x N x 1 visibility matrix, the element [i][j] = 1 when object point i is visible from camera j and 0 if not.
+    //  * @param  cameraMatrix M x 3 x 3 camera matrix (intrinsic parameters) 3 x 3 camera matrix for each image
+    //  * @param  distCoeffs M x   5  x1  distortion coefficient  for each image
+    //  * @param R  M x 3 x 3 rotation matrix  for each image
+    //  * @param T M x 3 x 1 translation matrix  for each image
+
+    cout << "CameraMatrix.size(): " << cameraMatrix.size() << endl;
+    cout << "distortionCoeffs.size(): " << distortionCoeffs.size() << endl;
+    cout << "cameraTranslations.size(): " << cameraRotations.size() << endl;
+    cout << "cameraTranslations.size(): " << cameraTranslations.size() << endl;
+    cout << "visibility.size(): " << visibility.size() << endl;
+
+    cout << "Checking: " << endl;
+
+    // cout << "cameraTranslations " << endl;
+    // for (vector<cv::Mat>::const_iterator itr = cameraTranslations.begin(); itr != cameraTranslations.end(); ++itr) {
     //     cout << *itr << endl;
     // }
 
@@ -214,6 +220,14 @@ int main(int argc, const char* argv[]) {
     //         cout << *j << ", ";
     //     }
     //     cout << endl;
+    // }
+
+    // cout << "visibility " << endl;
+    // for (vector<vector<int>>::const_iterator i = visibility.begin(); i != visibility.end(); ++i) {
+    //     for (vector<int>::const_iterator j = (*i).begin(); j != (*i).end(); ++j) {
+    //         cout << *j << ", ";
+    //     }
+    // cout << endl;
     // }
 
     // cout << "Camera Positions: " << endl;
@@ -233,8 +247,6 @@ int main(int argc, const char* argv[]) {
     //  * @param T M x 3 x 1 translation matrix  for each image
 
 
-
-
 //    //Point triangulation and Bundle Adjustment.
 //     for (vector<ImageDataSet*>::const_iterator itr = imageSets.begin(); itr != imageSets.end(); ++itr) {
 //         if (itr = imageSets.begin) {
@@ -252,8 +264,6 @@ int main(int argc, const char* argv[]) {
 //             //             add triangulated point to points3D
 //         }
 //     }
-
-
 
     renderEnvironment *renderer = new renderEnvironment();
     // cout << "Initialised renderer" << endl;

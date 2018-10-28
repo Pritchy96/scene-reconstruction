@@ -58,19 +58,20 @@ void fromGLM2CV(const glm::mat4& glmmat, cv::Mat* cvmat) {
 }
 
 ImageDataSet::ImageDataSet(ImageData *img1, ImageData *img2) {
-    //https://docs.opencv.org/3.1.0/d5/d6f/tutorial_feature_flann_matcher.html
-    cout << "ImageDataSet constructor" << endl;
-
-    
     image1 = img1; image2 = img2;
 
     FindMatchingFeatures(false);
     EstimateRelativePose();
 
-    if (!valid) {return;} //No Essential Matrix found.
+    // if (!valid) {return;} //No Essential Matrix found.
 
     //Calculate image2 world transform.
-    if (cv::countNonZero(image1->worldTransformation) == 0) {
+    if (!valid) {  
+         //If we can't decompose an essential matrix, just set the transform to the same one as the last image.
+         //...See if the Bundle Adjustment will compensate.
+        image2->worldTransformation = image1->worldTransformation;
+    }
+    else if (cv::countNonZero(image1->worldTransformation) == 0) {
         //If we're on the first image (no world tranform for previous image), then worldTransform = relativeTransform.
         image2->worldTransformation = relativeTransformation;
     } else {
@@ -90,7 +91,7 @@ ImageDataSet::ImageDataSet(ImageData *img1, ImageData *img2) {
 } 
 
 void ImageDataSet::FindMatchingFeatures(bool displayResults) {
-
+    //https://docs.opencv.org/3.1.0/d5/d6f/tutorial_feature_flann_matcher.html
     cv::Ptr<cv::DescriptorMatcher> matcher = cv::DescriptorMatcher::create("BruteForce-Hamming");
     // cv::FlannBasedMatcher matcher;
     std::vector<cv::DMatch> image_matches;

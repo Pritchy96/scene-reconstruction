@@ -47,15 +47,13 @@ int main(int argc, char** argv) {
     std::vector<cv::Mat> R;
     std::vector<cv::Mat> T;
     std::vector<cv::Mat> distCoeffs;
-    cv::TermCriteria criteria(CV_TERMCRIT_ITER + CV_TERMCRIT_EPS, 150, 1e-10);
 
     // read data from sba file format. All obtained data is in opencv format (including rotation in rodrigues format)
     readDataCVFormat(argv[1], argv[2], points, imagePoints, visibility, cameraMatrix, distCoeffs, R, T);
 
     // run sba optimization
     cvsba::Sba sba;
-
-    // change params if desired
+    cv::TermCriteria criteria(CV_TERMCRIT_ITER + CV_TERMCRIT_EPS, 150, 1e-10);
     cvsba::Sba::Params params ;
     params.type = cvsba::Sba::MOTIONSTRUCTURE;
     params.iterations = 150;
@@ -64,8 +62,6 @@ int main(int argc, char** argv) {
     params.fixedDistortion = 5;
     params.verbose = true;
     sba.setParams(params);
-
-
     sba.run( points, imagePoints, visibility, cameraMatrix,  R, T, distCoeffs);
 
     std::cout << "Optimization. Initial error=" << sba.getInitialReprjError() << " and Final error=" << sba.getFinalReprjError() << std::endl;
