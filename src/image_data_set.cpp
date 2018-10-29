@@ -60,7 +60,7 @@ void fromGLM2CV(const glm::mat4& glmmat, cv::Mat* cvmat) {
 ImageDataSet::ImageDataSet(ImageData *img1, ImageData *img2) {
     image1 = img1; image2 = img2;
 
-    FindMatchingFeatures(false);
+    FindMatchingFeatures(true);
     EstimateRelativePose();
 
     // if (!valid) {return;} //No Essential Matrix found.
@@ -91,12 +91,16 @@ ImageDataSet::ImageDataSet(ImageData *img1, ImageData *img2) {
 } 
 
 void ImageDataSet::FindMatchingFeatures(bool displayResults) {
-    //https://docs.opencv.org/3.1.0/d5/d6f/tutorial_feature_flann_matcher.html
-    cv::Ptr<cv::DescriptorMatcher> matcher = cv::DescriptorMatcher::create("BruteForce-Hamming");
-    // cv::FlannBasedMatcher matcher;
+
     std::vector<cv::DMatch> image_matches;
+
+    cv::Ptr<cv::DescriptorMatcher> matcher = cv::DescriptorMatcher::create("BruteForce-Hamming");
     matcher->match(image1->image_descriptors, image2->image_descriptors, image_matches);
-    
+
+    //https://docs.opencv.org/3.1.0/d5/d6f/tutorial_feature_flann_matcher.html
+    // cv::FlannBasedMatcher matcher = cv::FlannBasedMatcher(cv::makePtr<cv::flann::LshIndexParams>(12, 20, 2));
+    // matcher.match(image1->image_descriptors, image2->image_descriptors, image_matches);
+
     double max_dist = 0; double min_dist = 100;
     //Quick calculation of max and min distances between keypoints
     //Taken from https://docs.opencv.org/3.1.0/d5/d6f/tutorial_feature_flann_matcher.html
