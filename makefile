@@ -1,5 +1,5 @@
 CC := g++
-CXXFLAGS := -Wall -std=c++11 -MMD -MP
+CXXFLAGS := -Wall -std=c++11 -g
 
 SRC_DIR := ./src
 TEST_DIR := ./test

@@ -5,10 +5,6 @@
 
 #include <cvsba/cvsba.h>
 
-#include <opencv2/core/core.hpp>
-#include <opencv2/highgui/highgui.hpp>
-#include <opencv2/xfeatures2d.hpp>
-#include <opencv2/calib3d/calib3d.hpp>
 
 #include <GL/glew.h>
 #define GLM_SWIZZLE
@@ -34,13 +30,11 @@ const cv::Matx33f cameraIntrinsic (3310.400000f, 0.000000f, 316.730000f,
                                 0.000000f, 3325.500000f, 200.550000f,
                                 0.000000f, 0.000000f, 1.000000f);
 
-float initPose[]{-0.08661715685291285200, 0.97203145042392447000, 0.21829465483805316000, -0.97597093004059532000, -0.03881511324024737600,
+double initPose[]{-0.08661715685291285200, 0.97203145042392447000, 0.21829465483805316000, -0.97597093004059532000, -0.03881511324024737600,
     -0.21441803766270939000, -0.19994795321325870000, -0.23162091782017200000, 0.95203517502501223000, -0.0526034704197, 0.023290917003, 0.659119498846};
 
 //We'd normally assume world origin = intial camera position, but we're given it in the dino dataset, we use it here so we can check other camera poses.
-const cv::Matx34f initialPose = cv::Mat(3, 4, CV_32F, initPose);
- 
-
+cv::Mat initialPose = cv::Mat(3, 4, CV_64F, initPose);
 
 vector<ImageDataSet*> imageSets;
 vector<string> acceptedExtensions = {".png", ".jpg"};
@@ -72,7 +66,8 @@ vector<cv::Mat> cameraTranslations;
 vector<cv::Mat> distortionCoeffs;
 
 int main(int argc, const char* argv[]) {
-    cout << initialPose << endl;
+    cout <<"Intial Pose: " << initialPose << endl;
+
     cout << "Launching Program" << endl;
 	srand (time(NULL));
 
@@ -87,12 +82,11 @@ int main(int argc, const char* argv[]) {
     });
     sort(v.begin(), v.end());   //Sort, since directory iteration is not ordered on some file systems
 
-    glm::vec3 colour = *new glm::vec3(1.0f, 0.2f, 0.0f);
+    // glm::vec3 colour = *new glm::vec3(1.0f, 0.2f, 0.0f);
 
     //Load initial image and remove it from queue.
     cout << "creating first imagedata" << endl;
-    ImageData *previousImage = new ImageData(cv::String(filesystem::canonical(v[0]).string()), cameraIntrinsic,
-                                colour, initialPose);
+    ImageData *previousImage = new ImageData(cv::String(filesystem::canonical(v[0]).string()), cameraIntrinsic, initialPose);
     v.erase(v.begin());
 
     //TODO: run through method to convert to glm.
@@ -103,7 +97,7 @@ int main(int argc, const char* argv[]) {
     for (vector<filesystem::path>::const_iterator itr = v.begin(); itr != v.end(); ++itr) {
         cv::String filePath = cv::String(filesystem::canonical(*itr).string()); //Get full file path, not relative.
 
-        ImageData *currentImage = new ImageData(filePath, cameraIntrinsic, colour, cv::Matx34f::zeros());
+        ImageData *currentImage = new ImageData(filePath, cameraIntrinsic,  cv::Mat::zeros(3, 4, CV_64F));
         ImageDataSet *imagePair = new ImageDataSet(previousImage, currentImage);
         imageSets.push_back(imagePair);
 
@@ -124,13 +118,13 @@ int main(int argc, const char* argv[]) {
         imagePoints.push_back(imagePair->points1); //Push back image 1's points. Image 2's points will be pushed back as next iterations' points1.
 
         if (imageSets.size() == 1) {    //If it's the first image pair, all 3D points are new!
-            newPoints = imagePair->TriangulatePoints(imagePair->points1, imagePair->points2);
+            // newPoints = imagePair->TriangulatePoints(imagePair->points1, imagePair->points2);
             points3D.insert(points3D.end(), newPoints.begin(), newPoints.end());
                         
             cameraMatrix.push_back(cv::Mat(cameraIntrinsic));    //Camera 1
-            cameraRotations.push_back(cv::Mat(previousImage->worldTransformation).rowRange(0,3).colRange(0,3));
-            cameraTranslations.push_back(cv::Mat(previousImage->worldTransformation).rowRange(0,3).col(3));
-            distortionCoeffs.push_back(cv::Mat::zeros(5, 1, CV_32F));
+            cameraRotations.push_back(cv::Mat(previousImage->worldRotation));
+            cameraTranslations.push_back(cv::Mat(previousImage->worldTranslation));
+            distortionCoeffs.push_back(cv::Mat::zeros(5, 1, CV_64F));
                 
             vector<int> cameraVisibilities;
             cout << "Found N matches: " << newPoints.size() << endl;
@@ -169,14 +163,15 @@ int main(int argc, const char* argv[]) {
                     }
                     visibility[visibility.size()-2].push_back(1);  //Camera 1
                     visibility[visibility.size()-1].push_back(1);  //Camera 2
-                    pointsToTriangulate.push_back(*point);
+                    pointsToTriangulate.push_back(*point);  //TODO: Triangulate these and add to list?
                 }
             }
         }
+
         cameraMatrix.push_back(cv::Mat(cameraIntrinsic));    //Camera 2
-        cameraRotations.push_back(cv::Mat(currentImage->worldTransformation).rowRange(0,3).colRange(0,3));
-        cameraTranslations.push_back(cv::Mat(currentImage->worldTransformation).rowRange(0,3).col(3));
-        distortionCoeffs.push_back(cv::Mat::zeros(5, 1, CV_32F));
+        cameraRotations.push_back(cv::Mat(currentImage->worldRotation));
+        cameraTranslations.push_back(cv::Mat(currentImage->worldTranslation));
+        distortionCoeffs.push_back(cv::Mat::zeros(5, 1, CV_64F));
 
         previousImage = currentImage;
 
@@ -227,8 +222,8 @@ int main(int argc, const char* argv[]) {
 
     cout << "Checking: " << endl;
 
-    cout << "points3D " << endl;
-    for (vector<cv::Point3f>::const_iterator itr = points3D.begin(); itr != points3D.end(); ++itr) {
+    cout << "cameraTranslations " << endl;
+    for (vector<cv::Mat>::const_iterator itr = cameraTranslations.begin(); itr != cameraTranslations.end(); ++itr) {
         cout << *itr << endl;
     }
 

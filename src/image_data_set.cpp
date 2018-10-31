@@ -69,16 +69,35 @@ ImageDataSet::ImageDataSet(ImageData *img1, ImageData *img2) {
     if (!valid) {  
          //If we can't decompose an essential matrix, just set the transform to the same one as the last image.
          //...See if the Bundle Adjustment will compensate.
-        image2->worldTransformation = image1->worldTransformation;
+        image2->worldTranslation = image1->worldTranslation;
+        image2->worldRotation = image1->worldRotation;
+
     }
-    else if (cv::countNonZero(image1->worldTransformation) == 0) {
+    else if (cv::countNonZero(image1->worldRotation) == 0 && cv::countNonZero(image1->worldTranslation) == 0) {
         //If we're on the first image (no world tranform for previous image), then worldTransform = relativeTransform.
-        image2->worldTransformation = relativeTransformation;
+        image2->worldTranslation = image1->worldTranslation;
+        image2->worldRotation = image1->worldRotation;
     } else {
         //Otherwise, the world tranform is the sum translation of all previous relative transforms to get the world transform of image1
         //..plus the relative transform to get from image1 to image2
-        cv::multiply(image1->worldTransformation, relativeTransformation, image2->worldTransformation);
+
+        //Construct a transformation mat from a translation and a rotation mat.
+        cv::Mat i1WorldTransformation = cv::Mat::eye(3, 4, CV_64F),
+                    relativeTransformation = cv::Mat::eye(3, 4, CV_64F);       
+        image1->worldRotation.copyTo(i1WorldTransformation.rowRange(0,3).colRange(0,3));
+        image1->worldTranslation.copyTo(i1WorldTransformation.rowRange(0,3).col(3));
+        relativeRotation.copyTo(relativeTransformation.rowRange(0,3).colRange(0,3));
+        relativeTranslation.copyTo(relativeTransformation.rowRange(0,3).col(3));
+
+        //Multiply the two transforms
+        cv::Mat result = cv::Mat::eye(3, 4, CV_64F);        
+        cv::multiply(i1WorldTransformation, relativeTransformation, result);
+
+        //Split back into separate rotations/translations.
+        image2->worldRotation = result.rowRange(0,3).colRange(0,3);
+        image2->worldTranslation = result.rowRange(0,3).col(3);
     }
+
 
     // cout << "entering TriangulatePoints" << endl;
     // TriangulatePoints();
@@ -131,7 +150,8 @@ void ImageDataSet::EstimateRelativePose() {
     if (essentialMat.cols != 3 || essentialMat.rows != 3) {
         cout << "Not enough matched points to derive EssentialMatrix" << endl;
         valid = false;
-        relativeTransformation = cv::Matx34f::eye(); //TODO: check this code path.
+        relativeRotation = cv::Mat3f::eye(3, 3); //TODO: check this code path.
+        relativeRotation = cv::Mat1f::eye(3, 1);
         return;
     }
 
@@ -140,40 +160,36 @@ void ImageDataSet::EstimateRelativePose() {
     // cv::decomposeEssentialMat(essentialMat, cvRotation1, cvRotation2, cvTranslation);
     cv::recoverPose(essentialMat, points1, points2, image1->cameraIntrinsic, cvRotation, cvTranslation);
 
-    //Construct a transformation mat from a translation and a rotation mat.
-    cv::Mat transformation = cv::Mat::eye(3, 4, CV_64F);
-    cvRotation.copyTo(transformation.rowRange(0,3).colRange(0,3));
-    cvTranslation.copyTo(transformation.rowRange(0,3).col(3));
-
-    relativeTransformation = transformation;
+    relativeRotation = cvRotation;
+    relativeTranslation = cvTranslation;
 }
 
-vector<cv::Point3f> ImageDataSet::TriangulatePoints(vector<cv::Point2f> image1Points, vector<cv::Point2f> image2Points) {
-    //This is mostly just data mauling so cv is happy with what we put in triangulatePoints. 
-    //TODO: As above, we should probably be storing this data in this format anyway.
-    cv::Mat cameraIntrinsicDouble;
-    cv::Mat(image1->cameraIntrinsic).convertTo(cameraIntrinsicDouble, CV_64F);
-    cv::Mat image0RelativeTransformation = cv::Mat::eye(3, 4, CV_64FC1), i1wtdouble;
-    cv::Mat(image1->worldTransformation).convertTo(i1wtdouble, CV_64F);
+// vector<cv::Point3f> ImageDataSet::TriangulatePoints(vector<cv::Point2f> image1Points, vector<cv::Point2f> image2Points) {
+//     //This is mostly just data mauling so cv is happy with what we put in triangulatePoints. 
+//     //TODO: As above, we should probably be storing this data in this format anyway.
+//     cv::Mat cameraIntrinsicDouble;
+//     cv::Mat(image1->cameraIntrinsic).convertTo(cameraIntrinsicDouble, CV_64F);
+//     cv::Mat image0RelativeTransformation = cv::Mat::eye(3, 4, CV_64FC1), i1wtdouble;
+//     cv::Mat(image1->worldTransformation).convertTo(i1wtdouble, CV_64F);
 
-    cv::Mat points;
-    cv::triangulatePoints(cameraIntrinsicDouble * image0RelativeTransformation, cameraIntrinsicDouble * i1wtdouble, image1Points, image2Points, points);
+//     cv::Mat points;
+//     cv::triangulatePoints(cameraIntrinsicDouble * image0RelativeTransformation, cameraIntrinsicDouble * i1wtdouble, image1Points, image2Points, points);
     
-    //DEBUG
-    // cout << "Camera1 Position: " << image1WorldTransform << endl;
-    // cout << "Camera2 Position: " << image2WorldTransform << endl;
-    // cout << "points: " << points << endl;
+//     //DEBUG
+//     // cout << "Camera1 Position: " << image1WorldTransform << endl;
+//     // cout << "Camera2 Position: " << image2WorldTransform << endl;
+//     // cout << "points: " << points << endl;
 
-    vector<cv::Point3f> points3D;
-    for (int i = 0; i < points.cols; i++) {
-        vector<cv::Point3f> p3d;
-        convertPointsFromHomogeneous(points.col(i).t(), p3d);
-        // cout << "x: " << point.x << ", y: " << point.y<< ", z: " << point.z << endl << endl;
-        points3D.insert(points3D.end(), p3d.begin(), p3d.end());
-    }
+//     vector<cv::Point3f> points3D;
+//     for (int i = 0; i < points.cols; i++) {
+//         vector<cv::Point3f> p3d;
+//         convertPointsFromHomogeneous(points.col(i).t(), p3d);
+//         // cout << "x: " << point.x << ", y: " << point.y<< ", z: " << point.z << endl << endl;
+//         points3D.insert(points3D.end(), p3d.begin(), p3d.end());
+//     }
 
-    return points3D;
-}
+//     return points3D;
+// }
 
 void ImageDataSet::DisplayMatches() {
     cv::drawMatches(image1->image, image1->image_keypoints, image2->image, image2->image_keypoints,
