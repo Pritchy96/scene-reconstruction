@@ -12,14 +12,14 @@
         public:
             cv::Mat image,
                 image_descriptors;  //Characteristics of the keypoints
-            cv::Matx33f cameraIntrinsic;
+            cv::Matx33d cameraIntrinsic;
             std::vector<cv::KeyPoint> image_keypoints;
             cv::Mat worldTranslation;
             cv::Mat worldRotation;
             glm::vec3 lineColour;
 
-            ImageData(cv::String imagePath, cv::Matx33f intrinsicMat, cv::InputArray translation, cv::InputArray rotation);
-            ImageData(cv::String imagePath, cv::Matx33f intrinsicMat, cv::Mat _transformation);
+            ImageData(cv::String imagePath, cv::Matx33d intrinsicMat, cv::InputArray translation, cv::InputArray rotation);
+            ImageData(cv::String imagePath, cv::Matx33d intrinsicMat, cv::Mat _transformation);
             
     };
 

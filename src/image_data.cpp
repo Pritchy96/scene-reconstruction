@@ -11,7 +11,7 @@
 
 using namespace std;
 
-ImageData::ImageData(cv::String imagePath, cv::Matx33f intrinsicMat, cv::InputArray translation, cv::InputArray rotation) {
+ImageData::ImageData(cv::String imagePath, cv::Matx33d intrinsicMat, cv::InputArray translation, cv::InputArray rotation) {
     cout << "Entering ImageData Constructor" << endl;
     image = cv::imread(imagePath, cv::IMREAD_ANYCOLOR);
     cameraIntrinsic = intrinsicMat;
@@ -31,7 +31,7 @@ ImageData::ImageData(cv::String imagePath, cv::Matx33f intrinsicMat, cv::InputAr
     worldRotation = rotation.getMat();
 }
 
-ImageData::ImageData(cv::String imagePath, cv::Matx33f intrinsicMat, cv::Mat _transformation) {
+ImageData::ImageData(cv::String imagePath, cv::Matx33d intrinsicMat, cv::Mat _transformation) {
     CV_Assert(_transformation.type() == CV_64F);
     // CV_Assert(_transformation.size() == cv::Size(3, 4));
 

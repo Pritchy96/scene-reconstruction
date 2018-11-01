@@ -2,21 +2,16 @@
 #include <vector>
 #include <map>
 
-#include <opencv2/core/core.hpp>
-#include <opencv2/highgui/highgui.hpp>
-#include <opencv2/imgproc/imgproc.hpp>
-#include <opencv2/xfeatures2d.hpp>
-
 #include <glm/glm.hpp>
 #include <glm/gtc/type_ptr.hpp>
 #include "glm/gtc/matrix_transform.hpp"
 #define GLM_ENABLE_EXPERIMENTAL //gtx = gt eXperimental?
 #include <glm/gtx/string_cast.hpp>
 
-#include <opencv2/core/core.hpp>
-#include <opencv2/highgui/highgui.hpp>
+#include <opencv2/core.hpp>
+#include <opencv2/highgui.hpp>
 #include <opencv2/xfeatures2d.hpp>
-#include <opencv2/calib3d/calib3d.hpp>
+#include <opencv2/calib3d.hpp>
 
 #include "../include/image_data.hpp"
 #include "../include/image_data_set.hpp"
@@ -97,20 +92,10 @@ ImageDataSet::ImageDataSet(ImageData *img1, ImageData *img2) {
         image2->worldRotation = result.rowRange(0,3).colRange(0,3);
         image2->worldTranslation = result.rowRange(0,3).col(3);
     }
-
-
-    // cout << "entering TriangulatePoints" << endl;
-    // TriangulatePoints();
-
-    // cout << "exiting TriangulatePoints" << endl;
-
-    // for (vector<glm::vec3>::const_iterator itr = pointCloud.begin(); itr != pointCloud.end(); ++itr) {
-    //     cout << glm::to_string(*itr) << endl;
-    // }
 } 
 
 void ImageDataSet::FindMatchingFeatures(bool displayResults) {
-
+    
     std::vector<cv::DMatch> image_matches;
 
     cv::Ptr<cv::DescriptorMatcher> matcher = cv::DescriptorMatcher::create("BruteForce-Hamming");
@@ -126,7 +111,7 @@ void ImageDataSet::FindMatchingFeatures(bool displayResults) {
     //TODO: find good thresholds for this.
     for( int i = 0; i < image1->image_descriptors.rows; i++ ) {
         double dist = image_matches[i].distance;
-
+        
         if( dist < min_dist ) min_dist = dist;
         if( dist > max_dist ) max_dist = dist;
     }
@@ -164,32 +149,32 @@ void ImageDataSet::EstimateRelativePose() {
     relativeTranslation = cvTranslation;
 }
 
-// vector<cv::Point3f> ImageDataSet::TriangulatePoints(vector<cv::Point2f> image1Points, vector<cv::Point2f> image2Points) {
-//     //This is mostly just data mauling so cv is happy with what we put in triangulatePoints. 
-//     //TODO: As above, we should probably be storing this data in this format anyway.
-//     cv::Mat cameraIntrinsicDouble;
-//     cv::Mat(image1->cameraIntrinsic).convertTo(cameraIntrinsicDouble, CV_64F);
-//     cv::Mat image0RelativeTransformation = cv::Mat::eye(3, 4, CV_64FC1), i1wtdouble;
-//     cv::Mat(image1->worldTransformation).convertTo(i1wtdouble, CV_64F);
+vector<cv::Point3f> ImageDataSet::TriangulatePoints(vector<cv::Point2f> image1Points, vector<cv::Point2f> image2Points) {
+    cv::Mat image0RelativeTransformation = cv::Mat::eye(3, 4, CV_64FC1);
 
-//     cv::Mat points;
-//     cv::triangulatePoints(cameraIntrinsicDouble * image0RelativeTransformation, cameraIntrinsicDouble * i1wtdouble, image1Points, image2Points, points);
-    
-//     //DEBUG
-//     // cout << "Camera1 Position: " << image1WorldTransform << endl;
-//     // cout << "Camera2 Position: " << image2WorldTransform << endl;
-//     // cout << "points: " << points << endl;
+    cv::Mat i1WorldTransformation = cv::Mat::eye(3, 4, CV_64FC1);
+    image1->worldRotation.copyTo(i1WorldTransformation.rowRange(0,3).colRange(0,3));
+    image1->worldTranslation.copyTo(i1WorldTransformation.rowRange(0,3).col(3));
 
-//     vector<cv::Point3f> points3D;
-//     for (int i = 0; i < points.cols; i++) {
-//         vector<cv::Point3f> p3d;
-//         convertPointsFromHomogeneous(points.col(i).t(), p3d);
-//         // cout << "x: " << point.x << ", y: " << point.y<< ", z: " << point.z << endl << endl;
-//         points3D.insert(points3D.end(), p3d.begin(), p3d.end());
-//     }
+    cv::Mat i2WorldTransformation = cv::Mat::eye(3, 4, CV_64FC1);
+    image2->worldRotation.copyTo(i2WorldTransformation.rowRange(0,3).colRange(0,3));
+    image2->worldTranslation.copyTo(i2WorldTransformation.rowRange(0,3).col(3));
 
-//     return points3D;
-// }
+    cv::Mat cameraIntrinsicDouble;
+    cv::Mat(image1->cameraIntrinsic).convertTo(cameraIntrinsicDouble, CV_64F);
+
+    cv::Mat points;
+    cv::triangulatePoints(cameraIntrinsicDouble * i1WorldTransformation, cameraIntrinsicDouble * i2WorldTransformation, image1Points, image2Points, points);
+
+    vector<cv::Point3f> points3D;
+    for (int i = 0; i < points.cols; i++) {
+        vector<cv::Point3f> p3d;
+        convertPointsFromHomogeneous(points.col(i).t(), p3d);
+        // cout << "x: " << point.x << ", y: " << point.y<< ", z: " << point.z << endl << endl;
+        points3D.insert(points3D.end(), p3d.begin(), p3d.end());
+    }
+    return points3D;
+}
 
 void ImageDataSet::DisplayMatches() {
     cv::drawMatches(image1->image, image1->image_keypoints, image2->image, image2->image_keypoints,

@@ -26,7 +26,7 @@ using namespace boost;
 const string imageDir = "./bin/data/dinoRing/";
 
 //Given with Dataset.
-const cv::Matx33f cameraIntrinsic (3310.400000f, 0.000000f, 316.730000f,
+const cv::Matx33d cameraIntrinsic (3310.400000f, 0.000000f, 316.730000f,
                                 0.000000f, 3325.500000f, 200.550000f,
                                 0.000000f, 0.000000f, 1.000000f);
 
@@ -66,8 +66,6 @@ vector<cv::Mat> cameraTranslations;
 vector<cv::Mat> distortionCoeffs;
 
 int main(int argc, const char* argv[]) {
-    cout <<"Intial Pose: " << initialPose << endl;
-
     cout << "Launching Program" << endl;
 	srand (time(NULL));
 
@@ -88,10 +86,6 @@ int main(int argc, const char* argv[]) {
     cout << "creating first imagedata" << endl;
     ImageData *previousImage = new ImageData(cv::String(filesystem::canonical(v[0]).string()), cameraIntrinsic, initialPose);
     v.erase(v.begin());
-
-    //TODO: run through method to convert to glm.
-    // glm::vec3 cameraPos = (vec4(1.0, 1.0, 1.0, 0.0) * previousImage->worldTransformation).xyz();
-    // cameraPosesToRender.push_back(cameraPos);
     
     //Create image pairs.
     for (vector<filesystem::path>::const_iterator itr = v.begin(); itr != v.end(); ++itr) {
@@ -101,24 +95,12 @@ int main(int argc, const char* argv[]) {
         ImageDataSet *imagePair = new ImageDataSet(previousImage, currentImage);
         imageSets.push_back(imagePair);
 
-        //TODO: run through method to convert to glm.
-        // cameraPos = (cv::Mat(1.0, 1.0, 1.0, 0.0) * cv::Mat(currentImage->worldTransformation)).;
-        // cameraPosesToRender.push_back(cameraPos);
-
         vector<cv::Point3f> newPoints;
-
-        // vector<cv::Point3f> points3D;    //3D Points
-        // vector<vector<cv::Point2f> >  imagePoints;    //List of a list of each images points
-        // vector<vector<int> > visibility;  //for each image, is each 3D 
-        // vector<cv::Mat> cameraMatrix;  //The intrinsic matrix for each camera.
-        // vector<cv::Mat> cameraRotations;
-        // vector<cv::Mat> cameraTranslations;
-        // vector<cv::Mat> distortionCoeffs;
 
         imagePoints.push_back(imagePair->points1); //Push back image 1's points. Image 2's points will be pushed back as next iterations' points1.
 
         if (imageSets.size() == 1) {    //If it's the first image pair, all 3D points are new!
-            // newPoints = imagePair->TriangulatePoints(imagePair->points1, imagePair->points2);
+            newPoints = imagePair->TriangulatePoints(imagePair->points1, imagePair->points2);
             points3D.insert(points3D.end(), newPoints.begin(), newPoints.end());
                         
             cameraMatrix.push_back(cv::Mat(cameraIntrinsic));    //Camera 1
@@ -142,17 +124,19 @@ int main(int argc, const char* argv[]) {
             }
             visibility.push_back(cameraVisibilities);   //Camera 2
 
-            vector<cv::Point2f> pointsToTriangulate;
-            for (vector<cv::Point2f>::iterator point = imagePair->points1.begin(); point != imagePair->points1.end(); ++point) {
-                std::map<cv::Point2f, int>::iterator visibilityLocation = imageSets[imageSets.size()-2]->visibilityLocations.find(*point);
+            vector<cv::Point2f> image1PointsToTriangulate, image2PointsToTriangulate;
+            for (int i = 0; i < imagePair->points1.size(); i++) {
+                cv::Point2f image1Point = imagePair->points1[i], image2Point = imagePair->points2[i];
+                //vector<cv::Point2f>::iterator point = imagePair->points1.begin(); point != imagePair->points1.end(); ++point)
+                std::map<cv::Point2f, int>::iterator visibilityLocation = imageSets[imageSets.size()-2]->visibilityLocations.find(image1Point);
 
-                cout << "Trying to find a match for: " << *point << endl; 
+                cout << "Trying to find a match for: " << image1Point << endl; 
                 if (visibilityLocation != imageSets[imageSets.size()-2]->visibilityLocations.end()) {
 
                     cout << "Found a match: " << visibilityLocation->first << ", " << visibilityLocation->second << endl;
                     //If the point exists in a previous imageset, then the 3D point has already been added to the list and we should
                     //...append to that visibility list rather than making a new one.
-                    imageSets[imageSets.size()-1]->visibilityLocations[*point] = visibilityLocation->second;
+                    imageSets[imageSets.size()-1]->visibilityLocations[image2Point] = visibilityLocation->second;
                     visibility[visibility.size() - 1][visibilityLocation->second] = 1;
                 } else { //New point, Only visible in the most recent image pair.
                     cout << "No Match Found" << endl;
@@ -163,9 +147,13 @@ int main(int argc, const char* argv[]) {
                     }
                     visibility[visibility.size()-2].push_back(1);  //Camera 1
                     visibility[visibility.size()-1].push_back(1);  //Camera 2
-                    pointsToTriangulate.push_back(*point);  //TODO: Triangulate these and add to list?
+                    image1PointsToTriangulate.push_back(image1Point);  //TODO: Triangulate these and add to list?
+                    image2PointsToTriangulate.push_back(image2Point);  //TODO: Triangulate these and add to list?
                 }
             }
+
+            newPoints = imagePair->TriangulatePoints(image1PointsToTriangulate, image2PointsToTriangulate);
+            points3D.insert(points3D.end(), newPoints.begin(), newPoints.end());
         }
 
         cameraMatrix.push_back(cv::Mat(cameraIntrinsic));    //Camera 2
@@ -177,13 +165,13 @@ int main(int argc, const char* argv[]) {
 
         if (imageSets.size() > 1) { //Only run if images > 2
             // run sba optimization
-            // cout << "visibility " << endl;
-            // for (vector<vector<int>>::const_iterator i = visibility.begin(); i != visibility.end(); ++i) {
-            //     for (vector<int>::const_iterator j = (*i).begin(); j != (*i).end(); ++j) {
-            //         cout << *j << ", ";
-            //     }
-            // cout << endl;
-            // }
+            cout << "visibility " << endl;
+            for (vector<vector<int>>::const_iterator i = visibility.begin(); i != visibility.end(); ++i) {
+                for (vector<int>::const_iterator j = (*i).begin(); j != (*i).end(); ++j) {
+                    cout << *j << ", ";
+                }
+            cout << endl;
+            }
             
             cout << "points3D " << endl;
             for (vector<cv::Point3f>::const_iterator itr = points3D.begin(); itr != points3D.end(); ++itr) {
@@ -194,13 +182,13 @@ int main(int argc, const char* argv[]) {
             cv::TermCriteria criteria(CV_TERMCRIT_ITER + CV_TERMCRIT_EPS, 150, 1e-10);
             cvsba::Sba::Params params ;
             params.type = cvsba::Sba::MOTIONSTRUCTURE;
-            params.iterations = 1;
+            params.iterations = 100;
             params.minError = 1e-10;
             params.fixedIntrinsics = 5;
             params.fixedDistortion = 5;
             params.verbose = true;
             sba.setParams(params);
-            // sba.run( points3D, imagePoints, visibility, cameraMatrix,  cameraRotations, cameraTranslations, distortionCoeffs);
+            sba.run( points3D, imagePoints, visibility, cameraMatrix, cameraRotations, cameraTranslations, distortionCoeffs);
         }
     }
 
@@ -214,11 +202,11 @@ int main(int argc, const char* argv[]) {
     //  * @param R  M x 3 x 3 rotation matrix  for each image
     //  * @param T M x 3 x 1 translation matrix  for each image
 
-    cout << "CameraMatrix.size(): " << cameraMatrix.size() << endl;
-    cout << "distortionCoeffs.size(): " << distortionCoeffs.size() << endl;
-    cout << "cameraTranslations.size(): " << cameraRotations.size() << endl;
-    cout << "cameraTranslations.size(): " << cameraTranslations.size() << endl;
-    cout << "visibility.size(): " << visibility.size() << endl;
+    // cout << "CameraMatrix.size(): " << cameraMatrix.size() << endl;
+    // cout << "distortionCoeffs.size(): " << distortionCoeffs.size() << endl;
+    // cout << "cameraTranslations.size(): " << cameraRotations.size() << endl;
+    // cout << "cameraTranslations.size(): " << cameraTranslations.size() << endl;
+    // cout << "visibility.size(): " << visibility.size() << endl;
 
     cout << "Checking: " << endl;
 
@@ -278,7 +266,7 @@ int main(int argc, const char* argv[]) {
 //         }
 //     }
 
-    renderEnvironment *renderer = new renderEnvironment();
+    // renderEnvironment *renderer = new renderEnvironment();
     // cout << "Initialised renderer" << endl;
         	
     // GLuint basicShader = Shader::LoadShaders("./bin/shaders/basic.vertshader", "./bin/shaders/basic.fragshader");
@@ -293,4 +281,5 @@ int main(int argc, const char* argv[]) {
     // }
     return 0;
 }
+
 
