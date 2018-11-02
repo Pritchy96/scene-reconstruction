@@ -65,6 +65,28 @@ vector<cv::Mat> cameraRotations;
 vector<cv::Mat> cameraTranslations;
 vector<cv::Mat> distortionCoeffs;
 
+void fromCV2GLM(const cv::Mat& cvmat, glm::mat3* glmmat) {
+    //Basic conversion method adapted from: https://stackoverflow.com/questions/44409443/how-a-cvmat-translate-from-to-a-glmmat4
+    if (cvmat.cols != 3|| cvmat.rows != 3 || cvmat.type() != CV_32FC1) {
+        cout << "Matrix conversion error! (3x3)" << endl;
+        return;
+    }
+    memcpy(glm::value_ptr(*glmmat), cvmat.data, 12 * sizeof(float));
+}
+
+void fromCV2GLM(const cv::Mat& cvmat, glm::mat4* glmmat) {
+
+    //TODO: This is temp.
+    cv::Mat cvmat32;
+    cvmat.convertTo(cvmat32, CV_32F);
+
+    //Basic conversion method adapted from: https://stackoverflow.com/questions/44409443/how-a-cvmat-translate-from-to-a-glmmat4
+    if (cvmat32.cols != 4|| cvmat32.rows != 4 || cvmat32.type() != CV_32FC1) {
+        return;
+    }
+    memcpy(glm::value_ptr(*glmmat), cvmat32.data, 16 * sizeof(float));
+}
+
 int main(int argc, const char* argv[]) {
     cout << "Launching Program" << endl;
 	srand (time(NULL));
@@ -73,6 +95,17 @@ int main(int argc, const char* argv[]) {
         cout << "No Images found at path!" << endl;
         return -1;
     }
+
+    cvsba::Sba sba;
+    cv::TermCriteria criteria(CV_TERMCRIT_ITER + CV_TERMCRIT_EPS, 150, 1e-10);
+    cvsba::Sba::Params params;
+    params.type = cvsba::Sba::MOTIONSTRUCTURE;
+    params.iterations = 200;
+    params.minError = 1e-10;
+    params.fixedIntrinsics = 5;
+    params.fixedDistortion = 5;
+    params.verbose = true;
+    sba.setParams(params);
 
     vector<filesystem::path> v;
     copy_if(filesystem::directory_iterator(imageDir), filesystem::directory_iterator(), back_inserter(v), [&](filesystem::path path){
@@ -157,63 +190,71 @@ int main(int argc, const char* argv[]) {
         }
 
         cameraMatrix.push_back(cv::Mat(cameraIntrinsic));    //Camera 2
-        cameraRotations.push_back(cv::Mat(currentImage->worldRotation));
-        cameraTranslations.push_back(cv::Mat(currentImage->worldTranslation));
+        cameraRotations.push_back(currentImage->worldRotation);
+        cameraTranslations.push_back(currentImage->worldTranslation);
         distortionCoeffs.push_back(cv::Mat::zeros(5, 1, CV_64F));
 
         previousImage = currentImage;
 
         if (imageSets.size() > 1) { //Only run if images > 2
             // run sba optimization
-            cout << "visibility " << endl;
-            for (vector<vector<int>>::const_iterator i = visibility.begin(); i != visibility.end(); ++i) {
-                for (vector<int>::const_iterator j = (*i).begin(); j != (*i).end(); ++j) {
-                    cout << *j << ", ";
-                }
-            cout << endl;
-            }
+            // cout << "visibility " << endl;
+            // for (vector<vector<int>>::const_iterator i = visibility.begin(); i != visibility.end(); ++i) {
+            //     for (vector<int>::const_iterator j = (*i).begin(); j != (*i).end(); ++j) {
+            //         cout << *j << ", ";
+            //     }
+            // cout << endl;
+            // }
             
-            cout << "points3D " << endl;
-            for (vector<cv::Point3f>::const_iterator itr = points3D.begin(); itr != points3D.end(); ++itr) {
-                cout << *itr << endl;
+            // cout << "points3D " << endl;
+            // for (vector<cv::Point3f>::const_iterator itr = points3D.begin(); itr != points3D.end(); ++itr) {
+            //     cout << *itr << endl;
+            // }
+
+            try {
+                sba.run( points3D, imagePoints, visibility, cameraMatrix, cameraRotations, cameraTranslations, distortionCoeffs);
+            } catch (cv::Exception) {
+
             }
-
-            cvsba::Sba sba;
-            cv::TermCriteria criteria(CV_TERMCRIT_ITER + CV_TERMCRIT_EPS, 150, 1e-10);
-            cvsba::Sba::Params params ;
-            params.type = cvsba::Sba::MOTIONSTRUCTURE;
-            params.iterations = 100;
-            params.minError = 1e-10;
-            params.fixedIntrinsics = 5;
-            params.fixedDistortion = 5;
-            params.verbose = true;
-            sba.setParams(params);
-            sba.run( points3D, imagePoints, visibility, cameraMatrix, cameraRotations, cameraTranslations, distortionCoeffs);
         }
+
+        // cout << "visibilityLocations " << endl;
+        // for (map<cv::Point2f, int>::const_iterator itr = (imageSets[imageSets.size()-1]->visibilityLocations).begin(); itr != imageSets[imageSets.size()-1]->visibilityLocations.end(); ++itr) {
+        //     cout << (*itr).first << ", " << (*itr).second << endl;
+        // }
+
+        
+
+        
     }
 
-    //T.size() != distCoeffs.size()  || distCoeffs.size() != visibility.size()
+    for (int i = 0; i < cameraRotations.size() ; i++) {
+        glm::mat4 glmPose;
+        cv::Mat cvPose = cv::Mat::eye(4, 4, CV_64F); 
+        cameraRotations[i].copyTo(cvPose.rowRange(0,3).colRange(0,3));
+        cameraTranslations[i].copyTo(cvPose.rowRange(0,3).col(3));
 
-    //  * @param  points N x 3 object points
-    //  * @param  imagePoints M x N x 2 image points for each camera and each points. The outer  vector has M elements and each element has N elements of Point2d .
-    //  * @param  visibility M x N x 1 visibility matrix, the element [i][j] = 1 when object point i is visible from camera j and 0 if not.
-    //  * @param  cameraMatrix M x 3 x 3 camera matrix (intrinsic parameters) 3 x 3 camera matrix for each image
-    //  * @param  distCoeffs M x   5  x1  distortion coefficient  for each image
-    //  * @param R  M x 3 x 3 rotation matrix  for each image
-    //  * @param T M x 3 x 1 translation matrix  for each image
+        fromCV2GLM(cvPose, &glmPose);
 
-    // cout << "CameraMatrix.size(): " << cameraMatrix.size() << endl;
-    // cout << "distortionCoeffs.size(): " << distortionCoeffs.size() << endl;
-    // cout << "cameraTranslations.size(): " << cameraRotations.size() << endl;
-    // cout << "cameraTranslations.size(): " << cameraTranslations.size() << endl;
-    // cout << "visibility.size(): " << visibility.size() << endl;
+        cout << glm::to_string(glmPose) << endl;
 
-    cout << "Checking: " << endl;
-
-    cout << "cameraTranslations " << endl;
-    for (vector<cv::Mat>::const_iterator itr = cameraTranslations.begin(); itr != cameraTranslations.end(); ++itr) {
-        cout << *itr << endl;
+        cameraPosesToRender.push_back(glm::vec3(glm::vec4(1.0) * glmPose).xyz);
     }
+
+    // cout << "cameraPosesToRender " << endl;
+    // for (vector<glm::vec3>::const_iterator itr = cameraPosesToRender.begin(); itr != cameraPosesToRender.end(); ++itr) {
+    //     cout << glm::to_string(*itr) << endl;
+    // }
+
+    // cout << "cameraTranslations " << endl;
+    // for (vector<cv::Mat>::const_iterator itr = cameraTranslations.begin(); itr != cameraTranslations.end(); ++itr) {
+    //     cout << *itr << endl;
+    // }
+
+    // cout << "cameraRotations " << endl;
+    // for (vector<cv::Mat>::const_iterator itr = cameraRotations.begin(); itr != cameraRotations.end(); ++itr) {
+    //     cout << *itr << endl;
+    // }
 
     // cout << "imagePoints " << endl;
     // for (vector<vector<cv::Point2f>>::const_iterator i = imagePoints.begin(); i != imagePoints.end(); ++i) {
@@ -242,11 +283,6 @@ int main(int argc, const char* argv[]) {
     //     cout << glm::to_string((*itr)->image2->worldTransformation) << endl;
     // }
 
-    //  * @param  cameraMatrix M x 3 x 3 camera matrix (intrinsic parameters) 3 x 3 camera matrix for each image
-    //  * @param  distCoeffs M x   5  x1  distortion coefficient  for each image
-    //  * @param R  M x 3 x 3 rotation matrix  for each image
-    //  * @param T M x 3 x 1 translation matrix  for each image
-
 
 //    //Point triangulation and Bundle Adjustment.
 //     for (vector<ImageDataSet*>::const_iterator itr = imageSets.begin(); itr != imageSets.end(); ++itr) {
@@ -266,19 +302,19 @@ int main(int argc, const char* argv[]) {
 //         }
 //     }
 
-    // renderEnvironment *renderer = new renderEnvironment();
-    // cout << "Initialised renderer" << endl;
+    renderEnvironment *renderer = new renderEnvironment();
+    cout << "Initialised renderer" << endl;
         	
-    // GLuint basicShader = Shader::LoadShaders("./bin/shaders/basic.vertshader", "./bin/shaders/basic.fragshader");
-	// renderer->addRenderable(new Renderable(basicShader, cameraPosesToRender, cameraPosesToRender, GL_POINTS));
+    GLuint basicShader = Shader::LoadShaders("./bin/shaders/basic.vertshader", "./bin/shaders/basic.fragshader");
+	renderer->addRenderable(new Renderable(basicShader, cameraPosesToRender, cameraPosesToRender, GL_POINTS));
 
-    // while (true) {  //TODO: Write proper update & exit logic.
-	// 	oldTime = newTime;
-    // 	newTime = chrono::steady_clock::now();
-	// 	deltaT = chrono::duration_cast<chrono::milliseconds>(newTime - oldTime).count();
+    while (true) {  //TODO: Write proper update & exit logic.
+		oldTime = newTime;
+    	newTime = chrono::steady_clock::now();
+		deltaT = chrono::duration_cast<chrono::milliseconds>(newTime - oldTime).count();
 
-    //     renderer->update(deltaT);
-    // }
+        renderer->update(deltaT);
+    }
     return 0;
 }
 

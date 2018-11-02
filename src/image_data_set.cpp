@@ -18,39 +18,39 @@
 
 using namespace std;
 
-void fromCV2GLM(const cv::Mat& cvmat, glm::mat3* glmmat) {
-    //Basic conversion method adapted from: https://stackoverflow.com/questions/44409443/how-a-cvmat-translate-from-to-a-glmmat4
-    if (cvmat.cols != 3|| cvmat.rows != 3 || cvmat.type() != CV_32FC1) {
-        cout << "Matrix conversion error! (3x3)" << endl;
-        return;
-    }
-    memcpy(glm::value_ptr(*glmmat), cvmat.data, 12 * sizeof(float));
-}
+// void fromCV2GLM(const cv::Mat& cvmat, glm::mat3* glmmat) {
+//     //Basic conversion method adapted from: https://stackoverflow.com/questions/44409443/how-a-cvmat-translate-from-to-a-glmmat4
+//     if (cvmat.cols != 3|| cvmat.rows != 3 || cvmat.type() != CV_32FC1) {
+//         cout << "Matrix conversion error! (3x3)" << endl;
+//         return;
+//     }
+//     memcpy(glm::value_ptr(*glmmat), cvmat.data, 12 * sizeof(float));
+// }
 
-void fromGLM2CV(const glm::mat3& glmmat, cv::Mat* cvmat) {
-    //Basic conversion method adapted from: https://stackoverflow.com/questions/44409443/how-a-cvmat-translate-from-to-a-glmmat4
-    if (cvmat->cols != 3 || cvmat->rows != 3) {
-        (*cvmat) = cv::Mat(3, 3, CV_32F);
-    }
-    memcpy(cvmat->data, glm::value_ptr(glmmat), 12 * sizeof(float));
-}
+// void fromGLM2CV(const glm::mat3& glmmat, cv::Mat* cvmat) {
+//     //Basic conversion method adapted from: https://stackoverflow.com/questions/44409443/how-a-cvmat-translate-from-to-a-glmmat4
+//     if (cvmat->cols != 3 || cvmat->rows != 3) {
+//         (*cvmat) = cv::Mat(3, 3, CV_32F);
+//     }
+//     memcpy(cvmat->data, glm::value_ptr(glmmat), 12 * sizeof(float));
+// }
 
-void fromCV2GLM(const cv::Mat& cvmat, glm::mat4* glmmat) {
-    //Basic conversion method adapted from: https://stackoverflow.com/questions/44409443/how-a-cvmat-translate-from-to-a-glmmat4
-    if (cvmat.cols != 4|| cvmat.rows != 4 || cvmat.type() != CV_32FC1) {
-        cout << "Matrix conversion error! (4x4) " << cvmat.cols << endl;
-        return;
-    }
-    memcpy(glm::value_ptr(*glmmat), cvmat.data, 16 * sizeof(float));
-}
+// void fromCV2GLM(const cv::Mat& cvmat, glm::mat4* glmmat) {
+//     //Basic conversion method adapted from: https://stackoverflow.com/questions/44409443/how-a-cvmat-translate-from-to-a-glmmat4
+//     if (cvmat.cols != 4|| cvmat.rows != 4 || cvmat.type() != CV_32FC1) {
+//         cout << "Matrix conversion error! (4x4) " << cvmat.cols << endl;
+//         return;
+//     }
+//     memcpy(glm::value_ptr(*glmmat), cvmat.data, 16 * sizeof(float));
+// }
 
-void fromGLM2CV(const glm::mat4& glmmat, cv::Mat* cvmat) {
-    //Basic conversion method adapted from: https://stackoverflow.com/questions/44409443/how-a-cvmat-translate-from-to-a-glmmat4
-    if (cvmat->cols != 4 || cvmat->rows != 4) {
-        (*cvmat) = cv::Mat(4, 4, CV_32F);
-    }
-    memcpy(cvmat->data, glm::value_ptr(glmmat), 16 * sizeof(float));
-}
+// void fromGLM2CV(const glm::mat4& glmmat, cv::Mat* cvmat) {
+//     //Basic conversion method adapted from: https://stackoverflow.com/questions/44409443/how-a-cvmat-translate-from-to-a-glmmat4
+//     if (cvmat->cols != 4 || cvmat->rows != 4) {
+//         (*cvmat) = cv::Mat(4, 4, CV_32F);
+//     }
+//     memcpy(cvmat->data, glm::value_ptr(glmmat), 16 * sizeof(float));
+// }
 
 ImageDataSet::ImageDataSet(ImageData *img1, ImageData *img2) {
     image1 = img1; image2 = img2;
@@ -95,34 +95,47 @@ ImageDataSet::ImageDataSet(ImageData *img1, ImageData *img2) {
 } 
 
 void ImageDataSet::FindMatchingFeatures(bool displayResults) {
+
+    cv::FlannBasedMatcher matcher = cv::FlannBasedMatcher(cv::makePtr<cv::flann::LshIndexParams>(12, 20, 2));
     
-    std::vector<cv::DMatch> image_matches;
-
-    cv::Ptr<cv::DescriptorMatcher> matcher = cv::DescriptorMatcher::create("BruteForce-Hamming");
-    matcher->match(image1->image_descriptors, image2->image_descriptors, image_matches);
-
-    //https://docs.opencv.org/3.1.0/d5/d6f/tutorial_feature_flann_matcher.html
-    // cv::FlannBasedMatcher matcher = cv::FlannBasedMatcher(cv::makePtr<cv::flann::LshIndexParams>(12, 20, 2));
-    // matcher.match(image1->image_descriptors, image2->image_descriptors, image_matches);
-
-    double max_dist = 0; double min_dist = 100;
-    //Quick calculation of max and min distances between keypoints
-    //Taken from https://docs.opencv.org/3.1.0/d5/d6f/tutorial_feature_flann_matcher.html
-    //TODO: find good thresholds for this.
-    for( int i = 0; i < image1->image_descriptors.rows; i++ ) {
-        double dist = image_matches[i].distance;
-        
-        if( dist < min_dist ) min_dist = dist;
-        if( dist > max_dist ) max_dist = dist;
-    }
-
-    for (int i = 0; i < (int)image_matches.size(); i++) {
-        if (image_matches[i].distance <= cv::max(2*min_dist, 0.02)) {
-            goodMatches.push_back(image_matches[i]);
-            points2.push_back(image2->image_keypoints[image_matches[i].trainIdx].pt);
-            points1.push_back(image1->image_keypoints[image_matches[i].queryIdx].pt);
+    std::vector< std::vector<cv::DMatch> > knn_matches;
+    matcher.knnMatch( image1->image_descriptors, image2->image_descriptors, knn_matches, 2 );
+    //-- Filter matches using the Lowe's ratio test
+    const float ratio_thresh = 0.7f;
+    // std::vector<cv::DMatch> good_matches;
+    for (size_t i = 0; i < knn_matches.size(); i++)
+    {
+        if (knn_matches[i].size() > 0 && knn_matches[i][0].distance < ratio_thresh * knn_matches[i][1].distance)
+        {
+            goodMatches.push_back(knn_matches[i][0]);
+            points2.push_back(image2->image_keypoints[knn_matches[i][0].trainIdx].pt);
+            points1.push_back(image1->image_keypoints[knn_matches[i][0].queryIdx].pt);
         }
     }
+    
+    // std::vector<cv::DMatch> image_matches;
+
+//     cv::Ptr<cv::DescriptorMatcher> matcher = cv::DescriptorMatcher::create("BruteForce-Hamming");
+//     matcher->match(image1->image_descriptors, image2->image_descriptors, image_matches);
+
+//     double max_dist = 0; double min_dist = 100;
+//     //Quick calculation of max and min distances between keypoints
+//     //Taken from https://docs.opencv.org/3.1.0/d5/d6f/tutorial_feature_flann_matcher.html
+//     //TODO: find good thresholds for this.
+//     for( int i = 0; i < image1->image_descriptors.rows; i++ ) {
+//         double dist = image_matches[i].distance;
+        
+//         if( dist < min_dist ) min_dist = dist;
+//         if( dist > max_dist ) max_dist = dist;
+//     }
+
+//     for (int i = 0; i < (int)image_matches.size(); i++) {
+//         if (image_matches[i].distance <= cv::max(2*min_dist, 0.02)) {
+//             goodMatches.push_back(image_matches[i]);
+//             points2.push_back(image2->image_keypoints[image_matches[i].trainIdx].pt);
+//             points1.push_back(image1->image_keypoints[image_matches[i].queryIdx].pt);
+//         }
+//     }
 
     if (displayResults) DisplayMatches(); 
 }
