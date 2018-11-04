@@ -108,7 +108,7 @@ int main(int argc, const char* argv[]) {
     cv::TermCriteria criteria(CV_TERMCRIT_ITER + CV_TERMCRIT_EPS, 150, 1e-10);
     cvsba::Sba::Params params;
     params.type = cvsba::Sba::MOTIONSTRUCTURE;
-    params.iterations = 1000;
+    params.iterations = 150;
     params.minError = 1e-10;
     params.fixedIntrinsics = 5;
     params.fixedDistortion = 5;
