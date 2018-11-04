@@ -52,8 +52,9 @@ using namespace std;
 //     memcpy(cvmat->data, glm::value_ptr(glmmat), 16 * sizeof(float));
 // }
 
-ImageDataSet::ImageDataSet(ImageData *img1, ImageData *img2) {
+ImageDataSet::ImageDataSet(ImageData *img1, ImageData *img2, float scale_factor = 1.0f) {
     image1 = img1; image2 = img2;
+    scaleFactor = scale_factor;
 
     FindMatchingFeatures(true);
     EstimateRelativePose();
@@ -99,7 +100,7 @@ void ImageDataSet::FindMatchingFeatures(bool displayResults) {
     cv::FlannBasedMatcher matcher = cv::FlannBasedMatcher(cv::makePtr<cv::flann::LshIndexParams>(12, 20, 2));
     
     std::vector< std::vector<cv::DMatch> > knn_matches;
-    matcher.knnMatch( image1->image_descriptors, image2->image_descriptors, knn_matches, 2 );
+    matcher.knnMatch(image1->image_descriptors, image2->image_descriptors, knn_matches, 2);
     //-- Filter matches using the Lowe's ratio test
     const float ratio_thresh = 0.7f;
     // std::vector<cv::DMatch> good_matches;
@@ -141,14 +142,23 @@ void ImageDataSet::FindMatchingFeatures(bool displayResults) {
 }
 
 void ImageDataSet::EstimateRelativePose() {
-    cv::Mat essentialMat = cv::findEssentialMat(cv::Mat(points1), cv::Mat(points2), image1->cameraIntrinsic, cv::RANSAC, 0.99899999, 0.1f, cv::noArray());
+    cv::Mat mask; // inlier mask
+
+    // cv::Mat essentialMat = cv::findEssentialMat(cv::Mat(points1), cv::Mat(points2), image1->cameraIntrinsic, cv::RANSAC, 0.99899999, 0.1f, cv::noArray());
+    cv::Mat essentialMat = cv::findEssentialMat(cv::Mat(points1), cv::Mat(points2), image1->cameraIntrinsic, cv::LMEDS, 0.999,  0.1f, mask);
+
+    // cv::correctMatches(essentialMat, points1, points2, points1, points2);
     //cv::Mat fundamentalMat = cv::findFundamentalMat(cv::Mat(points1), cv::Mat(points2), cv::FM_RANSAC);
+
+    vector<cv::Point2f> undistortedPoints1, undistortedPoints2;
+    cv::undistortPoints(points1, undistortedPoints1, image1->cameraIntrinsic, cv::noArray());
+    cv::undistortPoints(points2, undistortedPoints2, image2->cameraIntrinsic, cv::noArray());
 
     //OpenCV returns a non 3x3 matrix if it can't derive an Essential Matrix.
     if (essentialMat.cols != 3 || essentialMat.rows != 3) {
         cout << "Not enough matched points to derive EssentialMatrix" << endl;
         valid = false;
-        relativeRotation = cv::Mat3f::eye(3, 3); //TODO: check this code path.
+        relativeTranslation = cv::Mat3f::eye(3, 3); //TODO: check this code path.
         relativeRotation = cv::Mat1f::eye(3, 1);
         return;
     }
@@ -156,10 +166,13 @@ void ImageDataSet::EstimateRelativePose() {
     cv::Mat cvRotation, cvTranslation;
 
     // cv::decomposeEssentialMat(essentialMat, cvRotation1, cvRotation2, cvTranslation);
-    cv::recoverPose(essentialMat, points1, points2, image1->cameraIntrinsic, cvRotation, cvTranslation);
+    // cv::recoverPose(essentialMat, points1, points2, image1, cvRotation, cvTranslation, mask);
+    cv::recoverPose(essentialMat, undistortedPoints1, undistortedPoints2, cvRotation, cvTranslation);
 
     relativeRotation = cvRotation;
     relativeTranslation = cvTranslation;
+
+
 }
 
 vector<cv::Point3f> ImageDataSet::TriangulatePoints(vector<cv::Point2f> image1Points, vector<cv::Point2f> image2Points) {

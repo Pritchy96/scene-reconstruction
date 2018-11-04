@@ -23,9 +23,9 @@ ImageData::ImageData(cv::String imagePath, cv::Matx33d intrinsicMat, cv::InputAr
     // cout << "Detected" << endl;
 
     //DEBUG
-    cv::Mat output_image_keypoints;
-    drawKeypoints( image, image_keypoints, output_image_keypoints, cv::Scalar::all(-1), cv::DrawMatchesFlags::DEFAULT );
-    imshow("Detected Keypoints", output_image_keypoints );
+    // cv::Mat output_image_keypoints;
+    // drawKeypoints( image, image_keypoints, output_image_keypoints, cv::Scalar::all(-1), cv::DrawMatchesFlags::DEFAULT );
+    // imshow("Detected Keypoints", output_image_keypoints );
 
     worldTranslation = translation.getMat();
     worldRotation = rotation.getMat();

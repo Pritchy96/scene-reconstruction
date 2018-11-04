@@ -5,7 +5,6 @@
 
 #include <cvsba/cvsba.h>
 
-
 #include <GL/glew.h>
 #define GLM_SWIZZLE
 #define GLM_FORCE_SWIZZLE
@@ -33,11 +32,23 @@ const cv::Matx33d cameraIntrinsic (3310.400000f, 0.000000f, 316.730000f,
 double initPose[]{-0.08661715685291285200, 0.97203145042392447000, 0.21829465483805316000, -0.97597093004059532000, -0.03881511324024737600,
     -0.21441803766270939000, -0.19994795321325870000, -0.23162091782017200000, 0.95203517502501223000, -0.0526034704197, 0.023290917003, 0.659119498846};
 
+//Synthetic
+// //Given with Dataset.
+// const cv::Matx33d cameraIntrinsic (851.01, 0.000, 796.5,
+//                                     0.000, 851.01, 352.5,
+//                                     0.000, 0.000, 1.000);
+
+// double initPose[]{0.977755, 0, 0.209751,
+//                     0.177552, 0.532404, -0.827659,
+//                     -0.111672, 0.846489, 0.52056,
+//                     0, 0, -610.999
+// };
+
 //We'd normally assume world origin = intial camera position, but we're given it in the dino dataset, we use it here so we can check other camera poses.
 cv::Mat initialPose = cv::Mat(3, 4, CV_64F, initPose);
 
 vector<ImageDataSet*> imageSets;
-vector<string> acceptedExtensions = {".png", ".jpg"};
+vector<string> acceptedExtensions = {".png", ".jpg", ".PNG", ".JPG"};
 
 vector<vec3> test_data_lines = {
 	vec3(0.000000, 4.000000, 12.000000),
@@ -91,16 +102,11 @@ int main(int argc, const char* argv[]) {
     cout << "Launching Program" << endl;
 	srand (time(NULL));
 
-    if (!filesystem::exists(imageDir) || filesystem::is_empty(imageDir)) {
-        cout << "No Images found at path!" << endl;
-        return -1;
-    }
-
     cvsba::Sba sba;
     cv::TermCriteria criteria(CV_TERMCRIT_ITER + CV_TERMCRIT_EPS, 150, 1e-10);
     cvsba::Sba::Params params;
     params.type = cvsba::Sba::MOTIONSTRUCTURE;
-    params.iterations = 200;
+    params.iterations = 400;
     params.minError = 1e-10;
     params.fixedIntrinsics = 5;
     params.fixedDistortion = 5;
@@ -113,7 +119,14 @@ int main(int argc, const char* argv[]) {
     });
     sort(v.begin(), v.end());   //Sort, since directory iteration is not ordered on some file systems
 
-    // glm::vec3 colour = *new glm::vec3(1.0f, 0.2f, 0.0f);
+    // glm::inlinevec3 colour = *new glm::vec3(1.0f, 0.2f, 0.0f);
+
+    if (v.size() == 0) {
+        cout << "No Images found at path!" << endl;
+        return -1;
+    }
+
+
 
     //Load initial image and remove it from queue.
     cout << "creating first imagedata" << endl;
@@ -163,16 +176,16 @@ int main(int argc, const char* argv[]) {
                 //vector<cv::Point2f>::iterator point = imagePair->points1.begin(); point != imagePair->points1.end(); ++point)
                 std::map<cv::Point2f, int>::iterator visibilityLocation = imageSets[imageSets.size()-2]->visibilityLocations.find(image1Point);
 
-                cout << "Trying to find a match for: " << image1Point << endl; 
+                // cout << "Trying to find a match for: " << image1Point << endl; 
                 if (visibilityLocation != imageSets[imageSets.size()-2]->visibilityLocations.end()) {
 
-                    cout << "Found a match: " << visibilityLocation->first << ", " << visibilityLocation->second << endl;
+                    // cout << "Found a match: " << visibilityLocation->first << ", " << visibilityLocation->second << endl;
                     //If the point exists in a previous imageset, then the 3D point has already been added to the list and we should
                     //...append to that visibility list rather than making a new one.
                     imageSets[imageSets.size()-1]->visibilityLocations[image2Point] = visibilityLocation->second;
                     visibility[visibility.size() - 1][visibilityLocation->second] = 1;
                 } else { //New point, Only visible in the most recent image pair.
-                    cout << "No Match Found" << endl;
+                    // cout << "No Match Found" << endl;
 
                     vector<int> cameraVisibilities;        
                     for (int i = 0; i < visibility.size()-2; i++) { 
@@ -209,10 +222,10 @@ int main(int argc, const char* argv[]) {
             // cout << "points3D " << endl;
             // for (vector<cv::Point3f>::const_iterator itr = points3D.begin(); itr != points3D.end(); ++itr) {
             //     cout << *itr << endl;
-            // }
+            // }feel free to bring smokes 
 
             try {
-                sba.run( points3D, imagePoints, visibility, cameraMatrix, cameraRotations, cameraTranslations, distortionCoeffs);
+                // sba.run( points3D, imagePoints, visibility, cameraMatrix, cameraRotations, cameraTranslations, distortionCoeffs);
             } catch (cv::Exception) {
 
             }
@@ -222,10 +235,6 @@ int main(int argc, const char* argv[]) {
         // for (map<cv::Point2f, int>::const_iterator itr = (imageSets[imageSets.size()-1]->visibilityLocations).begin(); itr != imageSets[imageSets.size()-1]->visibilityLocations.end(); ++itr) {
         //     cout << (*itr).first << ", " << (*itr).second << endl;
         // }
-
-        
-
-        
     }
 
     for (int i = 0; i < cameraRotations.size() ; i++) {
@@ -236,9 +245,11 @@ int main(int argc, const char* argv[]) {
 
         fromCV2GLM(cvPose, &glmPose);
 
+        glm::vec3 cameraPos = glm::vec3(glm::vec4(100.0) * glmPose).xyz;
+        // cout << glm::to_string(cameraPos) << endl;
         cout << glm::to_string(glmPose) << endl;
 
-        cameraPosesToRender.push_back(glm::vec3(glm::vec4(1.0) * glmPose).xyz);
+        cameraPosesToRender.push_back(cameraPos);
     }
 
     // cout << "cameraPosesToRender " << endl;
