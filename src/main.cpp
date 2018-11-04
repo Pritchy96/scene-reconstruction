@@ -24,9 +24,11 @@ using namespace boost;
 
 const string imageDir = "./bin/data/dinoRing/";
 
+const double FOCAL_LENGTH = 3310.400000; //focal length in pixels, after downsampling, guess from jpeg EXIF data
+
 //Given with Dataset.
-const cv::Matx33d cameraIntrinsic (3310.400000f, 0.000000f, 316.730000f,
-                                0.000000f, 3325.500000f, 200.550000f,
+const cv::Matx33d cameraIntrinsic (3310.400000f, 0.000000f, 320.0000f,
+                                0.000000f, 3325.500000f, 240.0000f,
                                 0.000000f, 0.000000f, 1.000000f);
 
 double initPose[]{-0.08661715685291285200, 0.97203145042392447000, 0.21829465483805316000, -0.97597093004059532000, -0.03881511324024737600,
@@ -106,7 +108,7 @@ int main(int argc, const char* argv[]) {
     cv::TermCriteria criteria(CV_TERMCRIT_ITER + CV_TERMCRIT_EPS, 150, 1e-10);
     cvsba::Sba::Params params;
     params.type = cvsba::Sba::MOTIONSTRUCTURE;
-    params.iterations = 400;
+    params.iterations = 1000;
     params.minError = 1e-10;
     params.fixedIntrinsics = 5;
     params.fixedDistortion = 5;
@@ -125,8 +127,6 @@ int main(int argc, const char* argv[]) {
         cout << "No Images found at path!" << endl;
         return -1;
     }
-
-
 
     //Load initial image and remove it from queue.
     cout << "creating first imagedata" << endl;
@@ -171,6 +171,16 @@ int main(int argc, const char* argv[]) {
             visibility.push_back(cameraVisibilities);   //Camera 2
 
             vector<cv::Point2f> image1PointsToTriangulate, image2PointsToTriangulate;
+
+            // Triangulate points
+            vector<cv::Point3f> points = imagePair->TriangulatePoints(imagePair->points1, imagePair->points2);
+            //Todo: program flow needs to be adjusted so we're not redoing this all the time.
+            vector<cv::Point3f> prevPoints = imagePair->TriangulatePoints(imageSets[imageSets.size()-2]->points1, imageSets[imageSets.size()-2]->points2); 
+            int scaleCount = 0;
+
+            // scale points to be relative to image1 -> image2
+            double relativeScale = 1.0f;
+
             for (int i = 0; i < imagePair->points1.size(); i++) {
                 cv::Point2f image1Point = imagePair->points1[i], image2Point = imagePair->points2[i];
                 //vector<cv::Point2f>::iterator point = imagePair->points1.begin(); point != imagePair->points1.end(); ++point)
@@ -184,6 +194,11 @@ int main(int argc, const char* argv[]) {
                     //...append to that visibility list rather than making a new one.
                     imageSets[imageSets.size()-1]->visibilityLocations[image2Point] = visibilityLocation->second;
                     visibility[visibility.size() - 1][visibilityLocation->second] = 1;
+                    relativeScale += cv::norm(points[i]-prevPoints[i]);
+                    scaleCount++;
+                    image1PointsToTriangulate.push_back(image1Point);  
+                    image2PointsToTriangulate.push_back(image2Point);  
+
                 } else { //New point, Only visible in the most recent image pair.
                     // cout << "No Match Found" << endl;
 
@@ -191,13 +206,62 @@ int main(int argc, const char* argv[]) {
                     for (int i = 0; i < visibility.size()-2; i++) { 
                         visibility[i].push_back(0); 
                     }
+
                     visibility[visibility.size()-2].push_back(1);  //Camera 1
                     visibility[visibility.size()-1].push_back(1);  //Camera 2
-                    image1PointsToTriangulate.push_back(image1Point);  //TODO: Triangulate these and add to list?
-                    image2PointsToTriangulate.push_back(image2Point);  //TODO: Triangulate these and add to list?
+                    image1PointsToTriangulate.push_back(image1Point);  
+                    image2PointsToTriangulate.push_back(image2Point);  
                 }
             }
 
+                //// apply scale and re-calculate T and P matrix
+                // local_t *= scale;
+
+                // // local transform
+                // Mat T = Mat::eye(4, 4, CV_64F);
+                // local_R.copyTo(T(Range(0, 3), Range(0, 3)));
+                // local_t.copyTo(T(Range(0, 3), Range(3, 4)));
+
+                // // accumulate transform
+                // cur.T = prev.T*T;
+
+                // // make projection ,matrix
+                // R = cur.T(Range(0, 3), Range(0, 3));
+                // t = cur.T(Range(0, 3), Range(3, 4));
+
+                // Mat P(3, 4, CV_64F);
+                // P(Range(0, 3), Range(0, 3)) = R.t();
+                // P(Range(0, 3), Range(3, 4)) = -R.t()*t;
+                // P = K*P;
+
+                // cur.P = P;
+
+                // triangulatePoints(prev.P, cur.P, src, dst, points4D);
+
+            // recalculate relative transform with scaled local transform
+            if (scaleCount > 0) {
+                relativeScale /= scaleCount;
+                imagePair->relativeTranslation *= relativeScale;
+
+                //Recalculate projection matrix
+                //Construct a transformation mat from a translation and a rotation mat.
+                cv::Mat i1WorldTransformation = cv::Mat::eye(3, 4, CV_64F),
+                            relativeTransformation = cv::Mat::eye(3, 4, CV_64F);       
+                previousImage->worldRotation.copyTo(i1WorldTransformation.rowRange(0,3).colRange(0,3));
+                previousImage->worldTranslation.copyTo(i1WorldTransformation.rowRange(0,3).col(3));
+                imagePair->relativeRotation.copyTo(relativeTransformation.rowRange(0,3).colRange(0,3));
+                imagePair->relativeTranslation.copyTo(relativeTransformation.rowRange(0,3).col(3));
+
+                //Multiply the two transforms
+                cv::Mat result = cv::Mat::eye(3, 4, CV_64F);        
+                cv::multiply(i1WorldTransformation, relativeTransformation, result);
+
+                //Split back into separate rotations/translations.
+                currentImage->worldRotation = result.rowRange(0,3).colRange(0,3);
+                currentImage->worldTranslation = result.rowRange(0,3).col(3);
+            }
+
+            // retriangulate points
             newPoints = imagePair->TriangulatePoints(image1PointsToTriangulate, image2PointsToTriangulate);
             points3D.insert(points3D.end(), newPoints.begin(), newPoints.end());
         }
@@ -222,10 +286,10 @@ int main(int argc, const char* argv[]) {
             // cout << "points3D " << endl;
             // for (vector<cv::Point3f>::const_iterator itr = points3D.begin(); itr != points3D.end(); ++itr) {
             //     cout << *itr << endl;
-            // }feel free to bring smokes 
+            // }
 
             try {
-                // sba.run( points3D, imagePoints, visibility, cameraMatrix, cameraRotations, cameraTranslations, distortionCoeffs);
+                sba.run( points3D, imagePoints, visibility, cameraMatrix, cameraRotations, cameraTranslations, distortionCoeffs);
             } catch (cv::Exception) {
 
             }
@@ -245,11 +309,21 @@ int main(int argc, const char* argv[]) {
 
         fromCV2GLM(cvPose, &glmPose);
 
-        glm::vec3 cameraPos = glm::vec3(glm::vec4(100.0) * glmPose).xyz;
+        glm::vec3 cameraPos = glm::vec3(glm::vec4(10.0) * glmPose).xyz;
         // cout << glm::to_string(cameraPos) << endl;
         cout << glm::to_string(glmPose) << endl;
 
         cameraPosesToRender.push_back(cameraPos);
+    }
+
+    vector<glm::vec3> pointsToRender;
+    for (int i = 0; i < points3D.size() ; i++) {
+        glm::vec3 glmPoint(points3D[i].x, points3D[i].y, points3D[i].z);
+        // points3D, &glmPoint);
+
+        cout << glm::to_string(glmPoint) << endl;
+
+        pointsToRender.push_back(glmPoint);
     }
 
     // cout << "cameraPosesToRender " << endl;
@@ -318,6 +392,7 @@ int main(int argc, const char* argv[]) {
         	
     GLuint basicShader = Shader::LoadShaders("./bin/shaders/basic.vertshader", "./bin/shaders/basic.fragshader");
 	renderer->addRenderable(new Renderable(basicShader, cameraPosesToRender, cameraPosesToRender, GL_POINTS));
+	renderer->addRenderable(new Renderable(basicShader, pointsToRender, pointsToRender, GL_POINTS));
 
     while (true) {  //TODO: Write proper update & exit logic.
 		oldTime = newTime;

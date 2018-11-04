@@ -52,9 +52,8 @@ using namespace std;
 //     memcpy(cvmat->data, glm::value_ptr(glmmat), 16 * sizeof(float));
 // }
 
-ImageDataSet::ImageDataSet(ImageData *img1, ImageData *img2, float scale_factor = 1.0f) {
+ImageDataSet::ImageDataSet(ImageData *img1, ImageData *img2) {
     image1 = img1; image2 = img2;
-    scaleFactor = scale_factor;
 
     FindMatchingFeatures(true);
     EstimateRelativePose();
@@ -143,16 +142,20 @@ void ImageDataSet::FindMatchingFeatures(bool displayResults) {
 
 void ImageDataSet::EstimateRelativePose() {
     cv::Mat mask; // inlier mask
-
+    cv::Point2d pp(cv::Mat(image1->cameraIntrinsic).at<double>(0,2), cv::Mat(image1->cameraIntrinsic).at<double>(1,2));
+    double focal = cv::Mat(image1->cameraIntrinsic).at<double>(0,0);
+        
     // cv::Mat essentialMat = cv::findEssentialMat(cv::Mat(points1), cv::Mat(points2), image1->cameraIntrinsic, cv::RANSAC, 0.99899999, 0.1f, cv::noArray());
-    cv::Mat essentialMat = cv::findEssentialMat(cv::Mat(points1), cv::Mat(points2), image1->cameraIntrinsic, cv::LMEDS, 0.999,  0.1f, mask);
+    // cv::Mat essentialMat = cv::findEssentialMat(cv::Mat(points1), cv::Mat(points2), image1->cameraIntrinsic, cv::LMEDS, 0.999,  0.1f, mask);
+    cv::Mat essentialMat = findEssentialMat(cv::Mat(points1), cv::Mat(points2), focal,
+                                                    pp, cv::RANSAC, 0.999, 1.0, mask);
 
     // cv::correctMatches(essentialMat, points1, points2, points1, points2);
     //cv::Mat fundamentalMat = cv::findFundamentalMat(cv::Mat(points1), cv::Mat(points2), cv::FM_RANSAC);
 
-    vector<cv::Point2f> undistortedPoints1, undistortedPoints2;
-    cv::undistortPoints(points1, undistortedPoints1, image1->cameraIntrinsic, cv::noArray());
-    cv::undistortPoints(points2, undistortedPoints2, image2->cameraIntrinsic, cv::noArray());
+    // vector<cv::Point2f> undistortedPoints1, undistortedPoints2;
+    // cv::undistortPoints(points1, undistortedPoints1, image1->cameraIntrinsic, cv::noArray());
+    // cv::undistortPoints(points2, undistortedPoints2, image2->cameraIntrinsic, cv::noArray());
 
     //OpenCV returns a non 3x3 matrix if it can't derive an Essential Matrix.
     if (essentialMat.cols != 3 || essentialMat.rows != 3) {
@@ -167,12 +170,10 @@ void ImageDataSet::EstimateRelativePose() {
 
     // cv::decomposeEssentialMat(essentialMat, cvRotation1, cvRotation2, cvTranslation);
     // cv::recoverPose(essentialMat, points1, points2, image1, cvRotation, cvTranslation, mask);
-    cv::recoverPose(essentialMat, undistortedPoints1, undistortedPoints2, cvRotation, cvTranslation);
+    cv::recoverPose(essentialMat, points1, points2, cvRotation, cvTranslation, focal, pp, mask);
 
     relativeRotation = cvRotation;
     relativeTranslation = cvTranslation;
-
-
 }
 
 vector<cv::Point3f> ImageDataSet::TriangulatePoints(vector<cv::Point2f> image1Points, vector<cv::Point2f> image2Points) {

@@ -16,11 +16,10 @@ using namespace std;
             vector<glm::vec3> pointCloud;
             std::map<cv::Point2f, int> visibilityLocations; //TODO: rename
             cv::Mat img_matches;
-            float scaleFactor;
             bool valid = true;
 
             // ImageDataSet(ImageData *img1, ImageData *img2);
-            ImageDataSet(ImageData *img1, ImageData *img2, float scale_factor);
+            ImageDataSet(ImageData *img1, ImageData *img2);
             void DisplayMatches();
             void EstimateRelativePose();
             void FindMatchingFeatures(bool displayResults);
