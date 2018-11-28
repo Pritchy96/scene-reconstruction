@@ -55,7 +55,6 @@ vector<string> acceptedExtensions = {".png", ".jpg", ".PNG", ".JPG"};
 vector<vec3> test_data_lines = {
 	vec3(0.000000, 4.000000, 12.000000),
 	vec3(2.870316, -101.411970, 1.000000),
-
 	vec3(0.000000, 0.000000, 0.2233231),
 	vec3(3.897837, 14.548908, 1.000000),
 
@@ -107,12 +106,12 @@ int main(int argc, const char* argv[]) {
     cvsba::Sba sba;
     cv::TermCriteria criteria(CV_TERMCRIT_ITER + CV_TERMCRIT_EPS, 150, 1e-10);
     cvsba::Sba::Params params;
-    params.type = cvsba::Sba::MOTIONSTRUCTURE;
     params.iterations = 150;
+    params.type = cvsba::Sba::MOTIONSTRUCTURE;
     params.minError = 1e-10;
     params.fixedIntrinsics = 5;
     params.fixedDistortion = 5;
-    params.verbose = true;
+    params.verbose = false;
     sba.setParams(params);
 
     vector<filesystem::path> v;
@@ -132,6 +131,8 @@ int main(int argc, const char* argv[]) {
     cout << "creating first imagedata" << endl;
     ImageData *previousImage = new ImageData(cv::String(filesystem::canonical(v[0]).string()), cameraIntrinsic, initialPose);
     v.erase(v.begin());
+
+    vector<cv::Point3f> prevPoints;
     
     //Create image pairs.
     for (vector<filesystem::path>::const_iterator itr = v.begin(); itr != v.end(); ++itr) {
@@ -162,7 +163,13 @@ int main(int argc, const char* argv[]) {
             }
             visibility.push_back(cameraVisibilities); //Camera 1
             visibility.push_back(cameraVisibilities); //Camera 2
+
+            //Setup for next iteration. this is normally copied from points.
+            prevPoints = imageSets[imageSets.size()-1]->TriangulatePoints(imageSets[imageSets.size()-1]->points1, imageSets[imageSets.size()-1]->points2); 
         } else {
+
+            //cout << "previous pair relative: " << imageSets[imageSets.size()-2]->relativeTranslation << endl;
+
             vector<int> cameraVisibilities;
             //Start by adding the new camera to the end of the camera list in visibility, initialised to all points not visible in this image (0)
             for (int i = 0; i < visibility[0].size(); i++) {
@@ -170,78 +177,83 @@ int main(int argc, const char* argv[]) {
             }
             visibility.push_back(cameraVisibilities);   //Camera 2
 
-            vector<cv::Point2f> image1PointsToTriangulate, image2PointsToTriangulate;
+            vector<cv::Point3f> pair1MatchedPoints, pair2MatchedPoints;
 
-            // Triangulate points
+            //Triangulate points
+            //Todo: program flow needs to be adjusted so we're not redoing this all the time?
+            vector<cv::Point3f> prevPoints = imageSets[imageSets.size()-2]->TriangulatePoints(imageSets[imageSets.size()-2]->points1, imageSets[imageSets.size()-2]->points2); 
             vector<cv::Point3f> points = imagePair->TriangulatePoints(imagePair->points1, imagePair->points2);
-            //Todo: program flow needs to be adjusted so we're not redoing this all the time.
-            vector<cv::Point3f> prevPoints = imagePair->TriangulatePoints(imageSets[imageSets.size()-2]->points1, imageSets[imageSets.size()-2]->points2); 
-            int scaleCount = 0;
-
-            // scale points to be relative to image1 -> image2
-            double relativeScale = 1.0f;
-
+            
+            int matches = 0;
             for (int i = 0; i < imagePair->points1.size(); i++) {
-                cv::Point2f image1Point = imagePair->points1[i], image2Point = imagePair->points2[i];
-                //vector<cv::Point2f>::iterator point = imagePair->points1.begin(); point != imagePair->points1.end(); ++point)
-                std::map<cv::Point2f, int>::iterator visibilityLocation = imageSets[imageSets.size()-2]->visibilityLocations.find(image1Point);
 
+                cv::Point2f image1Point = imagePair->points1[i], image2Point = imagePair->points2[i];
+
+                //currentPair[image1Point] != previousPair[image2Point]. This is because points1/2 is not the same between pairs, as it's only good matches for the pair.
+                //...not all of the possible matches.
+                int index;
+                vector<cv::Point2f> prevPairPoints2 = imageSets[imageSets.size()-2]->points2;
+                auto it = std::find(prevPairPoints2.begin(), prevPairPoints2.end(), image1Point);
+                if (it != prevPairPoints2.end()) {
+                    index = std::distance(prevPairPoints2.begin(), it);
+                } else {
+                    continue;
+                }
+                
+                // cout << "i = " << i << endl;
+                // cout << "actually matched at: " << index << endl;
+
+                std::map<cv::Point2f, int>::iterator visibilityLocation = imageSets[imageSets.size()-2]->visibilityLocations.find(image1Point);
                 // cout << "Trying to find a match for: " << image1Point << endl; 
                 if (visibilityLocation != imageSets[imageSets.size()-2]->visibilityLocations.end()) {
-
                     // cout << "Found a match: " << visibilityLocation->first << ", " << visibilityLocation->second << endl;
+                    // printf("Matched Point %i, set 1: (x:%f, y:%f, z:%f), set 2: (x:%f, y:%f, z:%f)\n", i, points[i].x, points[i].y, points[i].z, 
+                    // prevPoints[visibilityLocation->second].x, prevPoints[visibilityLocation->second].y, prevPoints[visibilityLocation->second].z);
+
+                    matches++;
+
                     //If the point exists in a previous imageset, then the 3D point has already been added to the list and we should
                     //...append to that visibility list rather than making a new one.
-                    imageSets[imageSets.size()-1]->visibilityLocations[image2Point] = visibilityLocation->second;
+                    imageSets[imageSets.size()-1]->visibilityLocations[image2Point] = i;
                     visibility[visibility.size() - 1][visibilityLocation->second] = 1;
-                    relativeScale += cv::norm(points[i]-prevPoints[i]);
-                    scaleCount++;
-                    image1PointsToTriangulate.push_back(image1Point);  
-                    image2PointsToTriangulate.push_back(image2Point);  
+
+                    pair1MatchedPoints.push_back(prevPoints[index]);  
+                    pair2MatchedPoints.push_back(points[i]);  
+
+                    cout << "previous Point: " << prevPoints[index] << endl;
+                    cout << "current Point: " << points[i] << endl;
 
                 } else { //New point, Only visible in the most recent image pair.
                     // cout << "No Match Found" << endl;
 
-                    vector<int> cameraVisibilities;        
+                    vector<int> cameraVisibilities;         
                     for (int i = 0; i < visibility.size()-2; i++) { 
                         visibility[i].push_back(0); 
                     }
 
                     visibility[visibility.size()-2].push_back(1);  //Camera 1
                     visibility[visibility.size()-1].push_back(1);  //Camera 2
-                    image1PointsToTriangulate.push_back(image1Point);  
-                    image2PointsToTriangulate.push_back(image2Point);  
                 }
             }
 
-                //// apply scale and re-calculate T and P matrix
-                // local_t *= scale;
-
-                // // local transform
-                // Mat T = Mat::eye(4, 4, CV_64F);
-                // local_R.copyTo(T(Range(0, 3), Range(0, 3)));
-                // local_t.copyTo(T(Range(0, 3), Range(3, 4)));
-
-                // // accumulate transform
-                // cur.T = prev.T*T;
-
-                // // make projection ,matrix
-                // R = cur.T(Range(0, 3), Range(0, 3));
-                // t = cur.T(Range(0, 3), Range(3, 4));
-
-                // Mat P(3, 4, CV_64F);
-                // P(Range(0, 3), Range(0, 3)) = R.t();
-                // P(Range(0, 3), Range(3, 4)) = -R.t()*t;
-                // P = K*P;
-
-                // cur.P = P;
-
-                // triangulatePoints(prev.P, cur.P, src, dst, points4D);
-
+            // cout << matches << " matches found between this and previous pairs" << endl;
             // recalculate relative transform with scaled local transform
-            if (scaleCount > 0) {
-                relativeScale /= scaleCount;
-                imagePair->relativeTranslation *= relativeScale;
+            if (pair1MatchedPoints.size() > 0) {   
+                double i1Scale = 0, i2Scale = 0;
+
+                for (int i = 1; i < pair1MatchedPoints.size(); i++) {
+                    i1Scale += cv::norm(cv::Mat(pair1MatchedPoints[i-1]) - cv::Mat(pair1MatchedPoints[i]));
+                    i2Scale += cv::norm(cv::Mat(pair2MatchedPoints[i-1]) - cv::Mat(pair2MatchedPoints[i]));
+                } 
+
+                double relativeScale = (i1Scale)/(i2Scale);
+
+                cout << "image1->worldTranslation before" << imagePair->image1->worldTranslation << endl;
+                cout << "image2->worldTranslation before" << imagePair->image2->worldTranslation << endl;
+                cout << "i1Scale: " << i1Scale << ", i2Scale: " << i2Scale << ", relativeScale: " << relativeScale << endl;
+                cout << "relative translation before: " << imagePair->relativeTranslation << endl;
+
+                imagePair->relativeTranslation /= relativeScale;
 
                 //Recalculate projection matrix
                 //Construct a transformation mat from a translation and a rotation mat.
@@ -249,6 +261,7 @@ int main(int argc, const char* argv[]) {
                             relativeTransformation = cv::Mat::eye(3, 4, CV_64F);       
                 previousImage->worldRotation.copyTo(i1WorldTransformation.rowRange(0,3).colRange(0,3));
                 previousImage->worldTranslation.copyTo(i1WorldTransformation.rowRange(0,3).col(3));
+
                 imagePair->relativeRotation.copyTo(relativeTransformation.rowRange(0,3).colRange(0,3));
                 imagePair->relativeTranslation.copyTo(relativeTransformation.rowRange(0,3).col(3));
 
@@ -259,12 +272,33 @@ int main(int argc, const char* argv[]) {
                 //Split back into separate rotations/translations.
                 currentImage->worldRotation = result.rowRange(0,3).colRange(0,3);
                 currentImage->worldTranslation = result.rowRange(0,3).col(3);
+
+                cout << "relative translation after: " << imagePair->relativeTranslation << endl;
+                cout << "image1->worldTranslation after" << imagePair->image1->worldTranslation << endl;
+                cout << "image2->worldTranslation after" << imagePair->image2->worldTranslation << endl;
+
+                // imagePair->DisplayMatches(); 
             }
 
-            // retriangulate points
-            newPoints = imagePair->TriangulatePoints(image1PointsToTriangulate, image2PointsToTriangulate);
+            //Retriangulate points
+            newPoints = imagePair->TriangulatePoints(imagePair->points1, imagePair->points2);
             points3D.insert(points3D.end(), newPoints.begin(), newPoints.end());
         }
+
+            //DEBUG
+            glm::mat4 glmPose;
+            cv::Mat cvPose = cv::Mat::eye(4, 4, CV_64F);
+            currentImage->worldRotation.copyTo(cvPose.rowRange(0,3).colRange(0,3));
+            currentImage->worldTranslation.copyTo(cvPose.rowRange(0,3).col(3));
+
+            fromCV2GLM(cvPose, &glmPose);
+            glm::vec3 cameraPos = glm::vec3(glm::vec4(10.0) * glmPose).xyz;
+            cameraPosesToRender.push_back(cameraPos);
+
+            // cout << "imageSets.size(): " << imageSets.size() << endl;
+            // cout << "Vector 3 Transformation: " << glm::to_string(cameraPos) << endl;
+            // cout << "Translation: " << currentImage->worldTranslation << endl;
+            // cout << "Rotation: " << currentImage->worldRotation << endl << endl;
 
         cameraMatrix.push_back(cv::Mat(cameraIntrinsic));    //Camera 2
         cameraRotations.push_back(currentImage->worldRotation);
@@ -289,16 +323,16 @@ int main(int argc, const char* argv[]) {
             // }
 
             try {
-                sba.run( points3D, imagePoints, visibility, cameraMatrix, cameraRotations, cameraTranslations, distortionCoeffs);
+                // sba.run( points3D, imagePoints, visibility, cameraMatrix, cameraRotations, cameraTranslations, distortionCoeffs);
             } catch (cv::Exception) {
 
             }
-        }
 
-        // cout << "visibilityLocations " << endl;
-        // for (map<cv::Point2f, int>::const_iterator itr = (imageSets[imageSets.size()-1]->visibilityLocations).begin(); itr != imageSets[imageSets.size()-1]->visibilityLocations.end(); ++itr) {
-        //     cout << (*itr).first << ", " << (*itr).second << endl;
-        // }
+            //     cout << "relative translation after BA: " << imagePair->relativeTranslation << endl;
+            //     cout << "image1->worldTranslation after BA" << imagePair->image1->worldTranslation << endl;
+            //     cout << "image2->worldTranslation after BA" << imagePair->image2->worldTranslation << endl;
+
+        }
     }
 
     for (int i = 0; i < cameraRotations.size() ; i++) {
@@ -310,19 +344,18 @@ int main(int argc, const char* argv[]) {
         fromCV2GLM(cvPose, &glmPose);
 
         glm::vec3 cameraPos = glm::vec3(glm::vec4(10.0) * glmPose).xyz;
-        // cout << glm::to_string(cameraPos) << endl;
-        cout << glm::to_string(glmPose) << endl;
-
         cameraPosesToRender.push_back(cameraPos);
+
+        // cout << "New Camera: " << endl;
+        // cout << "Vector 3 Transformation: " << glm::to_string(cameraPos) << endl;
+        // cout << "Translation: " << cameraTranslations[i] << endl;
+        // cout << "Rotation: " << cameraRotations[i] << endl << endl;
     }
 
     vector<glm::vec3> pointsToRender;
     for (int i = 0; i < points3D.size() ; i++) {
         glm::vec3 glmPoint(points3D[i].x, points3D[i].y, points3D[i].z);
-        // points3D, &glmPoint);
-
-        cout << glm::to_string(glmPoint) << endl;
-
+        // cout << glm::to_string(glmPoint) << endl;
         pointsToRender.push_back(glmPoint);
     }
 
@@ -368,7 +401,6 @@ int main(int argc, const char* argv[]) {
     //     cout << glm::to_string((*itr)->image2->worldTransformation) << endl;
     // }
 
-
 //    //Point triangulation and Bundle Adjustment.
 //     for (vector<ImageDataSet*>::const_iterator itr = imageSets.begin(); itr != imageSets.end(); ++itr) {
 //         if (itr = imageSets.begin) {
@@ -391,7 +423,8 @@ int main(int argc, const char* argv[]) {
     cout << "Initialised renderer" << endl;
         	
     GLuint basicShader = Shader::LoadShaders("./bin/shaders/basic.vertshader", "./bin/shaders/basic.fragshader");
-	renderer->addRenderable(new Renderable(basicShader, cameraPosesToRender, cameraPosesToRender, GL_POINTS));
+	// renderer->addRenderable(new Renderable(basicShader, cameraPosesToRender, cameraPosesToRender));
+
 	renderer->addRenderable(new Renderable(basicShader, pointsToRender, pointsToRender, GL_POINTS));
 
     while (true) {  //TODO: Write proper update & exit logic.

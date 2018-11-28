@@ -11,7 +11,6 @@
 #include <opencv2/core.hpp>
 #include <opencv2/highgui.hpp>
 #include <opencv2/xfeatures2d.hpp>
-#include <opencv2/calib3d.hpp>
 
 #include "../include/image_data.hpp"
 #include "../include/image_data_set.hpp"
@@ -55,15 +54,15 @@ using namespace std;
 ImageDataSet::ImageDataSet(ImageData *img1, ImageData *img2) {
     image1 = img1; image2 = img2;
 
-    FindMatchingFeatures(true);
+    FindMatchingFeatures(false);
     EstimateRelativePose();
 
     // if (!valid) {return;} //No Essential Matrix found.
-
     //Calculate image2 world transform.
-    if (!valid) {  
+    if (!valid) {
          //If we can't decompose an essential matrix, just set the transform to the same one as the last image.
          //...See if the Bundle Adjustment will compensate.
+         cout << "unable to decompose Essential matrix" << endl;
         image2->worldTranslation = image1->worldTranslation;
         image2->worldRotation = image1->worldRotation;
 
@@ -80,9 +79,9 @@ ImageDataSet::ImageDataSet(ImageData *img1, ImageData *img2) {
         cv::Mat i1WorldTransformation = cv::Mat::eye(3, 4, CV_64F),
                     relativeTransformation = cv::Mat::eye(3, 4, CV_64F);       
         image1->worldRotation.copyTo(i1WorldTransformation.rowRange(0,3).colRange(0,3));
-        image1->worldTranslation.copyTo(i1WorldTransformation.rowRange(0,3).col(3));
+        image1->worldTranslation.copyTo(i1WorldTransformation.rowRange(0,3).colRange(3, 4));
         relativeRotation.copyTo(relativeTransformation.rowRange(0,3).colRange(0,3));
-        relativeTranslation.copyTo(relativeTransformation.rowRange(0,3).col(3));
+        relativeTranslation.copyTo(relativeTransformation.rowRange(0,3).colRange(3,4));
 
         //Multiply the two transforms
         cv::Mat result = cv::Mat::eye(3, 4, CV_64F);        
@@ -91,10 +90,24 @@ ImageDataSet::ImageDataSet(ImageData *img1, ImageData *img2) {
         //Split back into separate rotations/translations.
         image2->worldRotation = result.rowRange(0,3).colRange(0,3);
         image2->worldTranslation = result.rowRange(0,3).col(3);
+        cout << endl << endl;
     }
 } 
 
 void ImageDataSet::FindMatchingFeatures(bool displayResults) {
+    // vector<uchar> mask;
+    // cv::findFundamentalMat(cv::Mat(points1), cv::Mat(points2), cv::FM_RANSAC, 3.0, 0.99, mask);
+
+    // // Filter bad matches using fundamental matrix constraintcxz
+
+    // for (size_t k=0; k < mask.size(); k++) {
+    //     if (mask[k]) {
+    //         img_pose_i.kp_match_idx(i_kp[k], j) = j_kp[k];
+    //         img_pose_j.kp_match_idx(j_kp[k], i) = i_kp[k];FAFAFA
+
+    //         line(canvas, src[k], dst[k] + Point2f(0, img_pose_i.img.rows), Scalar(0, 0, 255), 2);
+    //     }
+    // }
 
     cv::FlannBasedMatcher matcher = cv::FlannBasedMatcher(cv::makePtr<cv::flann::LshIndexParams>(12, 20, 2));
     
@@ -147,8 +160,10 @@ void ImageDataSet::EstimateRelativePose() {
         
     // cv::Mat essentialMat = cv::findEssentialMat(cv::Mat(points1), cv::Mat(points2), image1->cameraIntrinsic, cv::RANSAC, 0.99899999, 0.1f, cv::noArray());
     // cv::Mat essentialMat = cv::findEssentialMat(cv::Mat(points1), cv::Mat(points2), image1->cameraIntrinsic, cv::LMEDS, 0.999,  0.1f, mask);
-    cv::Mat essentialMat = findEssentialMat(cv::Mat(points1), cv::Mat(points2), focal,
+    cv::Mat essentialMat = cv::findEssentialMat(cv::Mat(points1), cv::Mat(points2), focal,
                                                     pp, cv::RANSAC, 0.999, 1.0, mask);
+
+    cout << "mask: " << mask << endl;
 
     // cv::correctMatches(essentialMat, points1, points2, points1, points2);
     //cv::Mat fundamentalMat = cv::findFundamentalMat(cv::Mat(points1), cv::Mat(points2), cv::FM_RANSAC);
@@ -166,19 +181,41 @@ void ImageDataSet::EstimateRelativePose() {
         return;
     }
 
+
+      vector<cv::Point2f> inlier_match_points1, inlier_match_points2;
+        for(int i = 0; i < mask.rows; i++) {
+            if(mask.at<unsigned char>(i)){
+            inlier_match_points1.push_back(points1[i]);
+            inlier_match_points2.push_back(points2[i]);
+            }
+        }
+
+    if(true) {
+        cv::Mat src;
+        cv::hconcat(image1->image, image2->image, src);
+        for(int i = 0; i < inlier_match_points1.size(); i++) {
+        cv::line( src, inlier_match_points1[i],
+                    cv::Point2f(inlier_match_points2[i].x + image1->image.cols, inlier_match_points2[i].y),
+                    cv::Scalar( 255, 0, 0 ), 1, 0 );
+        }
+        cv::imwrite("inlier_match_points.png", src);
+    }
+
+    mask.release();
     cv::Mat cvRotation, cvTranslation;
 
     // cv::decomposeEssentialMat(essentialMat, cvRotation1, cvRotation2, cvTranslation);
     // cv::recoverPose(essentialMat, points1, points2, image1, cvRotation, cvTranslation, mask);
-    cv::recoverPose(essentialMat, points1, points2, cvRotation, cvTranslation, focal, pp, mask);
+    cv::recoverPose(essentialMat, inlier_match_points1, inlier_match_points2, cvRotation, cvTranslation, focal, pp, triangulationMask);
 
     relativeRotation = cvRotation;
     relativeTranslation = cvTranslation;
+
+
+
 }
 
 vector<cv::Point3f> ImageDataSet::TriangulatePoints(vector<cv::Point2f> image1Points, vector<cv::Point2f> image2Points) {
-    cv::Mat image0RelativeTransformation = cv::Mat::eye(3, 4, CV_64FC1);
-
     cv::Mat i1WorldTransformation = cv::Mat::eye(3, 4, CV_64FC1);
     image1->worldRotation.copyTo(i1WorldTransformation.rowRange(0,3).colRange(0,3));
     image1->worldTranslation.copyTo(i1WorldTransformation.rowRange(0,3).col(3));
@@ -197,7 +234,7 @@ vector<cv::Point3f> ImageDataSet::TriangulatePoints(vector<cv::Point2f> image1Po
     for (int i = 0; i < points.cols; i++) {
         vector<cv::Point3f> p3d;
         convertPointsFromHomogeneous(points.col(i).t(), p3d);
-        // cout << "x: " << point.x << ", y: " << point.y<< ", z: " << point.z << endl << endl;
+        // cout << "x: " << p3d[0].x << ", y: " << p3d[0].y<< ", z: " << p3d[0].z << endl;
         points3D.insert(points3D.end(), p3d.begin(), p3d.end());
     }
     return points3D;

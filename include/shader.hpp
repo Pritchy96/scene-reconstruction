@@ -4,7 +4,7 @@
 
     #include <GL/glew.h>
     namespace Shader {
-        GLuint LoadShaders(const char * vertex_file_path,const char * fragment_file_path);
-        GLuint LoadTransformShader(const char * path);
+        GLuint LoadShaders(char * vertex_file_path, char * fragment_file_path);
+        GLuint LoadTransformShader( char * path);
     }
 #endif

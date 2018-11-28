@@ -17,15 +17,15 @@ ImageData::ImageData(cv::String imagePath, cv::Matx33d intrinsicMat, cv::InputAr
     cameraIntrinsic = intrinsicMat;
 
     //Detect features in the image.
-    cv::Ptr<cv::Feature2D> orb = cv::ORB::create(5000);
+    cv::Ptr<cv::Feature2D> orb = cv::AKAZE::create();
     // cout << "Set up Detector" << endl;
     orb->detectAndCompute(image, cv::Mat(), image_keypoints, image_descriptors);
     // cout << "Detected" << endl;
 
     //DEBUG
-    // cv::Mat output_image_keypoints;
-    // drawKeypoints( image, image_keypoints, output_image_keypoints, cv::Scalar::all(-1), cv::DrawMatchesFlags::DEFAULT );
-    // imshow("Detected Keypoints", output_image_keypoints );
+    cv::Mat output_image_keypoints;
+    drawKeypoints( image, image_keypoints, output_image_keypoints, cv::Scalar::all(-1), cv::DrawMatchesFlags::DEFAULT );
+    imshow("Detected Keypoints", output_image_keypoints );
 
     worldTranslation = translation.getMat();
     worldRotation = rotation.getMat();
@@ -39,7 +39,7 @@ ImageData::ImageData(cv::String imagePath, cv::Matx33d intrinsicMat, cv::Mat _tr
     cameraIntrinsic = intrinsicMat;
 
     //Detect features in the image.
-    cv::Ptr<cv::Feature2D> orb = cv::ORB::create(100000);
+    cv::Ptr<cv::Feature2D> orb = cv::AKAZE::create();
     // cout << "Set up Detector" << endl;
     orb->detectAndCompute(image, cv::Mat(), image_keypoints, image_descriptors);
     // cout << "Detected" << endl;
