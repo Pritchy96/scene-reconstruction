@@ -54,7 +54,7 @@ using namespace std;
 ImageDataSet::ImageDataSet(ImageData *img1, ImageData *img2) {
     image1 = img1; image2 = img2;
 
-    FindMatchingFeatures(false);
+    FindMatchingFeatures(true);
     EstimateRelativePose();
 
     // if (!valid) {return;} //No Essential Matrix found.
@@ -95,19 +95,7 @@ ImageDataSet::ImageDataSet(ImageData *img1, ImageData *img2) {
 } 
 
 void ImageDataSet::FindMatchingFeatures(bool displayResults) {
-    // vector<uchar> mask;
-    // cv::findFundamentalMat(cv::Mat(points1), cv::Mat(points2), cv::FM_RANSAC, 3.0, 0.99, mask);
-
-    // // Filter bad matches using fundamental matrix constraintcxz
-
-    // for (size_t k=0; k < mask.size(); k++) {
-    //     if (mask[k]) {
-    //         img_pose_i.kp_match_idx(i_kp[k], j) = j_kp[k];
-    //         img_pose_j.kp_match_idx(j_kp[k], i) = i_kp[k];FAFAFA
-
-    //         line(canvas, src[k], dst[k] + Point2f(0, img_pose_i.img.rows), Scalar(0, 0, 255), 2);
-    //     }
-    // }
+    vector<cv::Point2f> initialMatchesP1, initialMatchesP2;
 
     cv::FlannBasedMatcher matcher = cv::FlannBasedMatcher(cv::makePtr<cv::flann::LshIndexParams>(12, 20, 2));
     
@@ -121,11 +109,26 @@ void ImageDataSet::FindMatchingFeatures(bool displayResults) {
         if (knn_matches[i].size() > 0 && knn_matches[i][0].distance < ratio_thresh * knn_matches[i][1].distance)
         {
             goodMatches.push_back(knn_matches[i][0]);
-            points2.push_back(image2->image_keypoints[knn_matches[i][0].trainIdx].pt);
-            points1.push_back(image1->image_keypoints[knn_matches[i][0].queryIdx].pt);
+            initialMatchesP2.push_back(image2->image_keypoints[knn_matches[i][0].trainIdx].pt);
+            initialMatchesP1.push_back(image1->image_keypoints[knn_matches[i][0].queryIdx].pt);
         }
     }
+
     
+
+    // Filter bad matches using fundamental matrix constraint
+    cv::findFundamentalMat(initialMatchesP2, initialMatchesP1, cv::FM_RANSAC, 3.0, 0.99, mask);
+
+    cout << mask << endl;
+    for(int i = 0; i < mask.rows; i++) {
+        if(mask.at<unsigned char>(i)){
+            points1.push_back(initialMatchesP1[i]);
+            points2.push_back(initialMatchesP2[i]);
+
+            // cv::line(canvas, src[k], dst[k] + Point2f(0, img_pose_i.img.rows), Scalar(0, 0, 255), 2);
+        }
+    }
+
     // std::vector<cv::DMatch> image_matches;
 
 //     cv::Ptr<cv::DescriptorMatcher> matcher = cv::DescriptorMatcher::create("BruteForce-Hamming");
@@ -154,7 +157,6 @@ void ImageDataSet::FindMatchingFeatures(bool displayResults) {
 }
 
 void ImageDataSet::EstimateRelativePose() {
-    cv::Mat mask; // inlier mask
     cv::Point2d pp(cv::Mat(image1->cameraIntrinsic).at<double>(0,2), cv::Mat(image1->cameraIntrinsic).at<double>(1,2));
     double focal = cv::Mat(image1->cameraIntrinsic).at<double>(0,0);
         
@@ -181,14 +183,13 @@ void ImageDataSet::EstimateRelativePose() {
         return;
     }
 
-
-      vector<cv::Point2f> inlier_match_points1, inlier_match_points2;
-        for(int i = 0; i < mask.rows; i++) {
-            if(mask.at<unsigned char>(i)){
-            inlier_match_points1.push_back(points1[i]);
-            inlier_match_points2.push_back(points2[i]);
-            }
+    vector<cv::Point2f> inlier_match_points1, inlier_match_points2;
+    for(int i = 0; i < mask.rows; i++) {
+        if(mask.at<unsigned char>(i)){
+        inlier_match_points1.push_back(points1[i]);
+        inlier_match_points2.push_back(points2[i]);
         }
+    }
 
     if(true) {
         cv::Mat src;
@@ -206,13 +207,10 @@ void ImageDataSet::EstimateRelativePose() {
 
     // cv::decomposeEssentialMat(essentialMat, cvRotation1, cvRotation2, cvTranslation);
     // cv::recoverPose(essentialMat, points1, points2, image1, cvRotation, cvTranslation, mask);
-    cv::recoverPose(essentialMat, inlier_match_points1, inlier_match_points2, cvRotation, cvTranslation, focal, pp, triangulationMask);
+    cv::recoverPose(essentialMat, inlier_match_points1, inlier_match_points2, cvRotation, cvTranslation, focal, pp);
 
     relativeRotation = cvRotation;
     relativeTranslation = cvTranslation;
-
-
-
 }
 
 vector<cv::Point3f> ImageDataSet::TriangulatePoints(vector<cv::Point2f> image1Points, vector<cv::Point2f> image2Points) {

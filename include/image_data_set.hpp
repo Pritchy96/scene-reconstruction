@@ -15,7 +15,7 @@ using namespace std;
             vector<cv::DMatch> goodMatches;
             vector<glm::vec3> pointCloud;
             std::map<cv::Point2f, int> visibilityLocations; //TODO: rename
-            cv::Mat img_matches, triangulationMask;
+            cv::Mat img_matches, mask, triangulationMask;
             bool valid = true;
 
             // ImageDataSet(ImageData *img1, ImageData *img2);

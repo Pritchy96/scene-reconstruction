@@ -19,6 +19,8 @@
             ~renderEnvironment();
 
             void addRenderable(Renderable* renderable);
+            void addAxisLines();
+            void removeAxisLines();
             void update(float deltaT);
             void setupTransformShader(GLuint transformShader);   
             

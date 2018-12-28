@@ -17,7 +17,7 @@ ImageData::ImageData(cv::String imagePath, cv::Matx33d intrinsicMat, cv::InputAr
     cameraIntrinsic = intrinsicMat;
 
     //Detect features in the image.
-    cv::Ptr<cv::Feature2D> orb = cv::AKAZE::create();
+    cv::Ptr<cv::Feature2D> orb = cv::ORB::create(5000);
     // cout << "Set up Detector" << endl;
     orb->detectAndCompute(image, cv::Mat(), image_keypoints, image_descriptors);
     // cout << "Detected" << endl;
@@ -39,7 +39,7 @@ ImageData::ImageData(cv::String imagePath, cv::Matx33d intrinsicMat, cv::Mat _tr
     cameraIntrinsic = intrinsicMat;
 
     //Detect features in the image.
-    cv::Ptr<cv::Feature2D> orb = cv::AKAZE::create();
+    cv::Ptr<cv::Feature2D> orb = cv::ORB::create(5000);
     // cout << "Set up Detector" << endl;
     orb->detectAndCompute(image, cv::Mat(), image_keypoints, image_descriptors);
     // cout << "Detected" << endl;

@@ -20,7 +20,6 @@
 
             ImageData(cv::String imagePath, cv::Matx33d intrinsicMat, cv::InputArray translation, cv::InputArray rotation);
             ImageData(cv::String imagePath, cv::Matx33d intrinsicMat, cv::Mat _transformation);
-            
     };
 
 #endif

@@ -4,5 +4,5 @@ in vec4 fragment_colour;
 out vec4 colour;
 
 void main(){
-	colour = fragment_colour;
+	colour = vec4(fragment_colour.x, fragment_colour.y, fragment_colour.z, 0.4f);
 }
