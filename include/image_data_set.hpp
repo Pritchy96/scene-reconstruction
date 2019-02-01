@@ -4,7 +4,6 @@
 #include <map>
 #include "../include/point2fCompare.hpp"
 
-
 using namespace std;
 
     class ImageDataSet {

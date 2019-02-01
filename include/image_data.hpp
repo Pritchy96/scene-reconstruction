@@ -17,9 +17,16 @@
             cv::Mat worldTranslation;
             cv::Mat worldRotation;
             glm::vec3 lineColour;
+            static const bool DEBUG_LOG = true;
+            map<int, map<int, int>> keypointToOtherImageKeypoints;
+            map<int, int> keypointTo3DPoint;
+
+
 
             ImageData(cv::String imagePath, cv::Matx33d intrinsicMat, cv::InputArray translation, cv::InputArray rotation);
             ImageData(cv::String imagePath, cv::Matx33d intrinsicMat, cv::Mat _transformation);
+        private:
+            void SetupAndDetectKeyPoints(cv::String imagePath, cv::Matx33d intrinsicMat);
     };
 
 #endif

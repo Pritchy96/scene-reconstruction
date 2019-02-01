@@ -165,7 +165,9 @@ void ImageDataSet::EstimateRelativePose() {
     cv::Mat essentialMat = cv::findEssentialMat(cv::Mat(points1), cv::Mat(points2), focal,
                                                     pp, cv::RANSAC, 0.999, 1.0, mask);
 
-    cout << "mask: " << mask << endl;
+    cout << "mask: " << mask << endl;        //Pass in two lists of image keypoints
+        //Feature match
+        //Remove poor matches
 
     // cv::correctMatches(essentialMat, points1, points2, points1, points2);
     //cv::Mat fundamentalMat = cv::findFundamentalMat(cv::Mat(points1), cv::Mat(points2), cv::FM_RANSAC);
