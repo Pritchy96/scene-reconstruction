@@ -154,7 +154,7 @@ bool loadImagesAndDetectFeatures() {
     return 1;
 }
 
-LocalTransform EstimateRelativePose(ImageData* image1, ImageData* image2, vector<cv::Point2f> image1Points, vector<cv::Point2f> image2Points) {
+cv::Mat estimateRelativeTransform(ImageData* image1, ImageData* image2, vector<cv::Point2f> image1Points, vector<cv::Point2f> image2Points) {
     cv::Point2d pp(cv::Mat(image1->cameraIntrinsic).at<double>(0,2), cv::Mat(image1->cameraIntrinsic).at<double>(1,2));
     double focal = cv::Mat(image1->cameraIntrinsic).at<double>(0,0);
     cv::Mat mask;
@@ -165,29 +165,24 @@ LocalTransform EstimateRelativePose(ImageData* image1, ImageData* image2, vector
     //OpenCV returns a non 3x3 matrix if it can't derive an Essential Matrix.
     assert(essentialMat.cols == 3 && essentialMat.rows == 3);
 
-    LocalTransform* result = new LocalTransform;
-    cv::recoverPose(essentialMat, image2Points, image1Points, result->rotation, result->translation, focal, pp, mask);
+    cv::Mat localTranslation, localRotation;
+    cv::recoverPose(essentialMat, image2Points, image1Points, localRotation, localTranslation, focal, pp, mask);
 
-    return *result;
+    cv::Mat localTransform = cv::Mat::eye(4, 4, CV_64F);
+    localRotation.copyTo(localTransform(cv::Range(0, 3), cv::Range(0, 3)));
+    localTranslation.copyTo(localTransform(cv::Range(0, 3), cv::Range(3, 4)));
+
+    return localTransform;
 }
 
-cv::Mat EstimateWorldPose(int image1Index, int image2Index, vector<cv::Point2f> image1Points, vector<cv::Point2f> image2Points) {
-    LocalTransform image1ToImage2 = EstimateRelativePose(images[image1Index], images[image2Index], image1Points, image2Points);
-
-    cv::Mat image2WorldTranslation, image2WorldRotation;
-
-    image2WorldTranslation = images[image1Index]->worldTranslation * image1ToImage2.translation;
-    image2WorldTranslation = images[image1Index]->worldRotation * image1ToImage2.translation;
-    if (image1Index == 0) {
-        //First image pair in the set; no need to do any scaling.
-        images[image2Index]->worldTranslation = 
-
-    } else {
-        images[image1Index-1]->worldTranslation
-    }
+cv::Mat estimateWorldTransform(int image1Index, int image2Index, vector<cv::Point2f> image1Points, vector<cv::Point2f> image2Points) {
+    cv::Mat localTransform = estimateRelativeTransform(images[image1Index], images[image2Index], image1Points, image2Points);
+    images[image2Index]->worldTransform = images[image1Index]->worldTransform * localTransform;
 }
 
-vector<cv::Point3f> TriangulatePoints(ImageData* image1, ImageData* image2, vector<cv::Point2f> image1Points, vector<cv::Point2f> image2Points) {
+vector<cv::Point3f> triangulatePoints(ImageData* image1, ImageData* image2, vector<cv::Point2f> image1Points, vector<cv::Point2f> image2Points) {
+    
+    //TODO: Rewrite this to conform to the other code, and so that it uses image.transform rather than seperate 
     cv::Mat i1WorldTransformation = cv::Mat::eye(3, 4, CV_64FC1);
     image1->worldRotation.copyTo(i1WorldTransformation.rowRange(0,3).colRange(0,3));
     image1->worldTranslation.copyTo(i1WorldTransformation.rowRange(0,3).col(3));
@@ -212,7 +207,11 @@ vector<cv::Point3f> TriangulatePoints(ImageData* image1, ImageData* image2, vect
     return points3D;
 }
 
-void matchFeatures(ImageData* image1, ImageData* image2) {
+void matchFeatures(int image1Index, int image2Index) {
+
+    ImageData* image1 = images[image1Index]; 
+    ImageData* image2 = images[image2Index];
+
     cv::FlannBasedMatcher matcher = cv::FlannBasedMatcher(cv::makePtr<cv::flann::LshIndexParams>(12, 20, 2));
     // Match features between all images
     vector<cv::Point2f> initialMatchesP1, initialMatchesP2;
@@ -234,16 +233,21 @@ void matchFeatures(ImageData* image1, ImageData* image2) {
         }
     }
 
-    // Filter bad matches using fundamental matrix constraint
     vector<KeypointIndexesAndTriangulatedPoint> triangulatedPoints;
 
+    // Filter bad matches using fundamental matrix constraint
     vector<uchar> mask;
     cv::findFundamentalMat(initialMatchesP1, initialMatchesP2, cv::FM_RANSAC, 3.0, 0.99, mask);
 
-    //Calculate World Position of Image2
-
+    //Calculate initial estimate for World Position of Image2
+    estimateWorldTransform(image1Index, image2Index, initialMatchesP1, initialMatchesP2);
     //Triangulate initial guesses for Image2
-    vector<cv::Point3f> points3D = TriangulatePoints(image1, image2, initialMatchesP1, initialMatchesP2);
+    //Calculate scale factor based on previous points
+    //Adjust estimate for World Position of Image2
+    //Retriangulate Points
+    //
+
+    vector<cv::Point3f> points3D = triangulatePoints(image1, image2, initialMatchesP1, initialMatchesP2);
 
     for (size_t k=0; k < mask.size(); k++) {
         if (mask[k]) {
@@ -253,7 +257,33 @@ void matchFeatures(ImageData* image1, ImageData* image2) {
 
             match.image1KeypointIndex = intialIndexesP1[k];
             match.image2KeypointIndex = intialIndexesP2[k];
+            
             match.Point3DGuess = points3D[k];
+
+            // Calculate scale factor based on previous points
+            /* 
+                for each newly triangulated 3D point
+                if (find())
+
+            */
+
+
+
+            // double i1Scale = 0, i2Scale = 0;
+
+            // for (int i = 1; i < pair1MatchedPoints.size(); i++) {
+            //                 i1Scale += cv::norm(cv::Mat(pair1MatchedPoints[i-1]) - cv::Mat(pair1MatchedPoints[i]));
+            //                 i2Scale += cv::norm(cv::Mat(pair2MatchedPoints[i-1]) - cv::Mat(pair2MatchedPoints[i]));
+            // }
+
+
+            // double relativeScale = i1Scale/i2Scale;
+
+
+            //Adjust estimate for World Position of Image2
+            //Retriangulate Points
+
+
             triangulatedPoints.push_back(match);
         }
     }
@@ -271,11 +301,9 @@ int main(int argc, const char* argv[]) {
 
     // Match features between all images
     for (int i = 0; i < images.size() - 1; i++) {
-        ImageData* image1 = images[i];
         for (size_t j=i+1; j < images.size(); j++) {
-            ImageData* image2 = images[j];
-            matchFeatures(image1, image2);
 
+            matchFeatures(i, j);
 
         }
     }
@@ -311,7 +339,7 @@ int main(int argc, const char* argv[]) {
     //     imagePoints.push_back(imagePair->points1); //Push back image 1's points. Image 2's points will be pushed back as next iterations' points1.
 
     //     if (imageSets.size() == 1) {    //If it's the first image pair, all 3D points are new!
-    //         newPoints = imagePair->TriangulatePoints(imagePair->points1, imagePair->points2);
+    //         newPoints = imagePair->triangulatePoints(imagePair->points1, imagePair->points2);
     //         points3D.insert(points3D.end(), newPoints.begin(), newPoints.end());
                         
     //         cameraMatrix.push_back(cv::Mat(cameraIntrinsic));    //Camera 1
@@ -331,7 +359,7 @@ int main(int argc, const char* argv[]) {
     //         visibility.push_back(cameraVisibilities); //Camera 2
 
     //         //Setup for next iteration. this is normally copied from points.
-    //         prevPoints = imageSets[imageSets.size()-1]->TriangulatePoints(imageSets[imageSets.size()-1]->points1, imageSets[imageSets.size()-1]->points2); 
+    //         prevPoints = imageSets[imageSets.size()-1]->triangulatePoints(imageSets[imageSets.size()-1]->points1, imageSets[imageSets.size()-1]->points2); 
     //     } else {
     //         vector<int> cameraVisibilities;
     //         //Start by adding the new camera to the end of the camera list in visibility, initialised to all points not visible in this image (0)
@@ -344,8 +372,8 @@ int main(int argc, const char* argv[]) {
 
     //         //Triangulate points
     //         //Todo: program flow needs to be adjusted so we're not redoing this all the time?
-    //         vector<cv::Point3f> prevPoints = imageSets[imageSets.size()-2]->TriangulatePoints(imageSets[imageSets.size()-2]->points1, imageSets[imageSets.size()-2]->points2); 
-    //         vector<cv::Point3f> points = imagePair->TriangulatePoints(imagePair->points1, imagePair->points2);
+    //         vector<cv::Point3f> prevPoints = imageSets[imageSets.size()-2]->triangulatePoints(imageSets[imageSets.size()-2]->points1, imageSets[imageSets.size()-2]->points2); 
+    //         vector<cv::Point3f> points = imagePair->triangulatePoints(imagePair->points1, imagePair->points2);
             
     //         int matches = 0;
     //         for (int i = 0; i < imagePair->points1.size(); i++) {
@@ -435,7 +463,7 @@ int main(int argc, const char* argv[]) {
     //         }
 
     //         //Retriangulate points
-    //         newPoints = imagePair->TriangulatePoints(imagePair->points1, imagePair->points2);
+    //         newPoints = imagePair->triangulatePoints(imagePair->points1, imagePair->points2);
     //         points3D.insert(points3D.end(), newPoints.begin(), newPoints.end());
     //     }
 
