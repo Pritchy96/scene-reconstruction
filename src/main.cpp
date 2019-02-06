@@ -1,5 +1,6 @@
 #include <iostream>
 #include <chrono>
+#include <unordered_map>
 #include <boost/filesystem.hpp>
 #include <cvsba/cvsba.h>
 #include <GL/glew.h>
@@ -18,7 +19,7 @@
 using namespace std;
 using namespace boost;
 
-const string imageDir = "./bin/data/dinoRing/";
+const string imageDir = "./bin/data/desk/";
 vector<string> acceptedExtensions = {".png", ".jpg", ".PNG", ".JPG"};
 
 const double FOCAL_LENGTH = 3310.400000; //focal length in pixels, after downsampling, guess from jpeg EXIF data
@@ -49,24 +50,27 @@ auto oldTime = chrono::steady_clock::now(), newTime = chrono::steady_clock::now(
 double deltaT;
 
 vector<ImageData*> images;
-vector<glm::vec3> cameraPosesToRender, cameraColoursToRender;
-vector<cv::Point3f> points3D;    //3D Points
-// vector<vector<cv::Point2f> >  imagePoints;    //List of a list of each images detected features
-// vector<vector<int> > visibility;  //for each image, is each 3D 
+map<cv::Point2f, int> previousPairImage2FeaturesToPoints3D; 
+//A list of a list of guesses for each 3d Point. Each list gets averaged out to a single 3D point in points3D.
+vector<vector<cv::Point3f>> points3DGuesses;   
+vector<cv::Point3f> points3D;
+//List of a list of each images' detected features. This is not sparse; imagePoints[0][1] does not have to be equal to imagePoints[1][1] even if they do have a match!
+vector<vector<cv::Point2f>> imagePoints;    
+vector<vector<int>> visibility;  //for each image, is each 3D point represented by a 2D image feature. 1 if yes, 0 if not.
 vector<cv::Mat> cameraMatrix;  //The intrinsic matrix for each camera.
 vector<cv::Mat> cameraRotations;
 vector<cv::Mat> cameraTranslations;
-vector<cv::Mat> distortionCoeffs;
+vector<glm::vec3> cameraPosesToRender, cameraColoursToRender;
 
-struct KeypointIndexesAndTriangulatedPoint {
-    int image1KeypointIndex;
-    int image2KeypointIndex;
-    cv::Point3f Point3DGuess;
-};
+// struct KeypointIndexesAndTriangul￼atedPoint {
+//     int image1KeypointIndex;
+//     int image2KeypointIndex;
+//     cv::Point3f Point3DGuess;
+// };
 
-struct LocalTransform {
-    cv::Mat rotation, translation;
-};
+// struct LocalTransform {
+//     cv::Mat rotation, translation;
+// };
 
 void fromCV2GLM(const cv::Mat& cvmat, glm::mat3* glmmat) {
     //Basic conversion method adapted from: https://stackoverflow.com/questions/44409443/how-a-cvmat-translate-from-to-a-glmmat4
@@ -148,7 +152,7 @@ bool loadImagesAndDetectFeatures() {
     for (vector<filesystem::path>::const_iterator itr = imagePaths.begin(); itr != imagePaths.end(); ++itr) {
         cv::String filePath = cv::String(filesystem::canonical(*itr).string()); //Get full file path, not relative.
 
-        ImageData *currentImage = new ImageData(filePath, cameraIntrinsic,  cv::Mat::zeros(3, 4, CV_64F));
+        ImageData *currentImage = new ImageData(filePath, cameraIntrinsic,  cv::Mat::eye(3, 4, CV_64F));
         images.push_back(currentImage);
     }
     return 1;
@@ -181,15 +185,13 @@ cv::Mat estimateWorldTransform(int image1Index, int image2Index, vector<cv::Poin
 }
 
 vector<cv::Point3f> triangulatePoints(ImageData* image1, ImageData* image2, vector<cv::Point2f> image1Points, vector<cv::Point2f> image2Points) {
-    
     //TODO: Rewrite this to conform to the other code, and so that it uses image.transform rather than seperate 
-    cv::Mat i1WorldTransformation = cv::Mat::eye(3, 4, CV_64FC1);
-    image1->worldRotation.copyTo(i1WorldTransformation.rowRange(0,3).colRange(0,3));
-    image1->worldTranslation.copyTo(i1WorldTransformation.rowRange(0,3).col(3));
+
+    cv::Mat i1WorldTransformation = cv::Mat::eye(3, 4, CV_64FC1); 
+    image1->worldTransform.rowRange(0, 3).colRange(0, 4).copyTo(i1WorldTransformation);
 
     cv::Mat i2WorldTransformation = cv::Mat::eye(3, 4, CV_64FC1);
-    image2->worldRotation.copyTo(i2WorldTransformation.rowRange(0,3).colRange(0,3));
-    image2->worldTranslation.copyTo(i2WorldTransformation.rowRange(0,3).col(3));
+    image2->worldTransform.rowRange(0, 3).colRange(0, 4).copyTo(i2WorldTransformation);
 
     cv::Mat cameraIntrinsicDouble;
     cv::Mat(image1->cameraIntrinsic).convertTo(cameraIntrinsicDouble, CV_64F);
@@ -212,83 +214,125 @@ void matchFeatures(int image1Index, int image2Index) {
     ImageData* image1 = images[image1Index]; 
     ImageData* image2 = images[image2Index];
 
-    cv::FlannBasedMatcher matcher = cv::FlannBasedMatcher(cv::makePtr<cv::flann::LshIndexParams>(12, 20, 2));
-    // Match features between all images
-    vector<cv::Point2f> initialMatchesP1, initialMatchesP2;
-    vector<int> intialIndexesP1, intialIndexesP2;
-    vector<int> filteredIndexesP1, filteredIndexesP2;
-    std::vector<std::vector<cv::DMatch>> knn_matches;
-    matcher.knnMatch((*image1).image_descriptors, (*image2).image_descriptors, knn_matches, 2);
+    //Feature Match 
+        cv::FlannBasedMatcher matcher = cv::FlannBasedMatcher(cv::makePtr<cv::flann::LshIndexParams>(12, 20, 2));
+        // Match features between all images
+        vector<cv::Point2f> initialMatchesP1, initialMatchesP2,  filteredMatchesP1, filteredMatchesP2;;
+        vector<int> intialIndexesP1, intialIndexesP2, filteredIndexesP1, filteredIndexesP2;
+        std::vector<std::vector<cv::DMatch>> knn_matches;
+        matcher.knnMatch((*image1).image_descriptors, (*image2).image_descriptors, knn_matches, 2);
 
-    //-- Filter matches using the Lowe's ratio test
-    const float ratio_thresh = 0.7f;
-    for (size_t i = 0; i < knn_matches.size(); i++) {
-        if (knn_matches[i].size() > 0 && knn_matches[i][0].distance < ratio_thresh * knn_matches[i][1].distance) {  
-            initialMatchesP1.push_back(image1->image_keypoints[knn_matches[i][0].queryIdx].pt);
-            initialMatchesP2.push_back(image2->image_keypoints[knn_matches[i][0].trainIdx].pt);
 
-            //Store the indexes to avoid the problem of having keypoints not matching up when masked.
-            intialIndexesP1.push_back(knn_matches[i][0].queryIdx);
-            intialIndexesP2.push_back(knn_matches[i][0].trainIdx);
+    //Lowes Ratio Test Filter
+        const float ratio_thresh = 0.7f;
+        for (size_t i = 0; i < knn_matches.size(); i++) {
+            if (knn_matches[i].size() > 0 && knn_matches[i][0].distance < ratio_thresh * knn_matches[i][1].distance) {
+                initialMatchesP1.push_back(image1->image_keypoints[knn_matches[i][0].queryIdx].pt);
+                initialMatchesP2.push_back(image2->image_keypoints[knn_matches[i][0].trainIdx].pt);
+
+                //Store the indexes to avoid the problem of having keypoints not matching up when masked.
+                intialIndexesP1.push_back(knn_matches[i][0].queryIdx);
+                intialIndexesP2.push_back(knn_matches[i][0].trainIdx);
+            }
         }
-    }
 
-    vector<KeypointIndexesAndTriangulatedPoint> triangulatedPoints;
+    //Fundamental Matrix Constraint Filter
+        vector<uchar> mask;
+        cv::findFundamentalMat(initialMatchesP1, initialMatchesP2, cv::FM_RANSAC, 3.0, 0.99, mask);
+        
+        for (size_t k=0; k < mask.size(); k++) {
+            if (mask[k]) {
+                filteredIndexesP1.push_back(intialIndexesP1[k]);
+                filteredIndexesP2.push_back(intialIndexesP2[k]);
 
-    // Filter bad matches using fundamental matrix constraint
-    vector<uchar> mask;
-    cv::findFundamentalMat(initialMatchesP1, initialMatchesP2, cv::FM_RANSAC, 3.0, 0.99, mask);
+                filteredMatchesP1.push_back(image1->image_keypoints[intialIndexesP1[k]].pt);
+                filteredMatchesP2.push_back(image2->image_keypoints[intialIndexesP2[k]].pt);
+            }
+        }
 
-    //Calculate initial estimate for World Position of Image2
-    estimateWorldTransform(image1Index, image2Index, initialMatchesP1, initialMatchesP2);
+
+    //Initial estimate for World Position of Image2
+        estimateWorldTransform(image1Index, image2Index, filteredMatchesP1, filteredMatchesP2);
+    
+
     //Triangulate initial guesses for Image2
+        vector<cv::Point3f> currentPair3DGuesses = triangulatePoints(image1, image2, filteredMatchesP1, filteredMatchesP2);
+        int good_matches = cv::sum(mask)[0];
+        assert(good_matches >= 10);
+
+
     //Calculate scale factor based on previous points
-    //Adjust estimate for World Position of Image2
-    //Retriangulate Points
-    //
-
-    vector<cv::Point3f> points3D = triangulatePoints(image1, image2, initialMatchesP1, initialMatchesP2);
-
-    for (size_t k=0; k < mask.size(); k++) {
-        if (mask[k]) {
-            KeypointIndexesAndTriangulatedPoint match;
-            // img_pose_i.kp_match_idx(i_kp[k], j) = j_kp[k];
-            // img_pose_j.kp_match_idx(j_kp[k], i) = i_kp[k];
-
-            match.image1KeypointIndex = intialIndexesP1[k];
-            match.image2KeypointIndex = intialIndexesP2[k];
+        cv::Point3f previousPairGuess1, previousPairGuess2, currentPairGuess1, currentPairGuess2; 
+        bool firstPair = true;
+        int previousPairScale, currentPairScale;
+        for (int i = 0; i < currentPair3DGuesses.size(); i++) {
+            auto corresponding3DPoint = previousPairImage2FeaturesToPoints3D.find(filteredMatchesP1[i]);
             
-            match.Point3DGuess = points3D[k];
+            if (corresponding3DPoint != previousPairImage2FeaturesToPoints3D.end()) {
+                if(firstPair) {
+                    //The first time we've found a set of three matched points, set them to guess 1 rather than 2.
+                    previousPairGuess1 = points3DGuesses[corresponding3DPoint->second].back();
+                    currentPairGuess1 = currentPair3DGuesses[i];
+                } else {
+                    //We have two points matched across each pair, we can do scaling.
+                    previousPairGuess2 = points3DGuesses[corresponding3DPoint->second].back();
+                    currentPairGuess2 = currentPair3DGuesses[i];
 
-            // Calculate scale factor based on previous points
-            /* 
-                for each newly triangulated 3D point
-                if (find())
+                    previousPairScale += cv::norm(cv::Mat(previousPairGuess1) - cv::Mat(previousPairGuess2));
+                    currentPairScale += cv::norm(cv::Mat(currentPairGuess1) - cv::Mat(currentPairGuess2));
 
-            */
+                    previousPairGuess1 = previousPairGuess2;
+                    currentPairGuess1 = currentPairGuess2;
+                }
+            }
+        }
 
-
-
-            // double i1Scale = 0, i2Scale = 0;
-
-            // for (int i = 1; i < pair1MatchedPoints.size(); i++) {
-            //                 i1Scale += cv::norm(cv::Mat(pair1MatchedPoints[i-1]) - cv::Mat(pair1MatchedPoints[i]));
-            //                 i2Scale += cv::norm(cv::Mat(pair2MatchedPoints[i-1]) - cv::Mat(pair2MatchedPoints[i]));
-            // }
-
-
-            // double relativeScale = i1Scale/i2Scale;
-
-
+        if (previousPairScale != 0 && currentPairScale != 0) {
+            //Scale
             //Adjust estimate for World Position of Image2
             //Retriangulate Points
+        }
+
+        // cout << "previous Scale: " << previousPairScale << ", current Scale: " << currentPairScale << endl;
+
+    // Put points into final structure.
+    map<cv::Point2f, int> currentPairImage2FeaturesToPoints3D;
+    for (int i = 0; i < currentPair3DGuesses.size(); i++) {
+        auto corresponding3DPoint = previousPairImage2FeaturesToPoints3D.find(filteredMatchesP1[i]);
+
+        cout << "point: " << filteredMatchesP1[i] << "\n\n";
+
+        for(auto it : previousPairImage2FeaturesToPoints3D) {
+            cout << it.first << " " << it.second << "\n";
+        }
+
+        cout << "\n" << endl;
 
 
-            triangulatedPoints.push_back(match);
+        if (corresponding3DPoint != previousPairImage2FeaturesToPoints3D.end()) {
+            //Push back the new guess to the existing list of guesses.
+            auto corresponding3DPointGuess = previousPairImage2FeaturesToPoints3D.find(filteredMatchesP1[i]);
+            //int point3DGuessIndex = distance(points3DGuesses.begin(), points3DGuesses[corresponding3DPoint->second].back);
+
+            points3DGuesses[corresponding3DPoint->second].push_back(currentPair3DGuesses[i]);
+
+            //Create a binding from the image2 point to the index of the 3D guess list.                
+            currentPairImage2FeaturesToPoints3D[filteredMatchesP2[i]] = corresponding3DPoint->second;
+        } else { //New point
+            //Create a new list of 3D point guesses if we're on a new point.
+            vector<cv::Point3f> newGuessList;
+            newGuessList.push_back(currentPair3DGuesses[i]);
+            points3DGuesses.push_back(newGuessList);
+
+            //Create a binding from the image2 point to the index of the 3D guess list.
+            currentPairImage2FeaturesToPoints3D[filteredMatchesP2[i]] = points3DGuesses.size();
         }
     }
-    int good_matches = cv::sum(mask)[0];
-    assert(good_matches >= 10);
+
+    previousPairImage2FeaturesToPoints3D.clear();
+    previousPairImage2FeaturesToPoints3D.insert(currentPairImage2FeaturesToPoints3D.begin(), currentPairImage2FeaturesToPoints3D.end());
+    currentPairImage2FeaturesToPoints3D.clear();
+    //previousPairImage2FeaturesToPoints3D = currentPairImage2FeaturesToPoints3D;
 }
 
 int main(int argc, const char* argv[]) {
@@ -308,213 +352,6 @@ int main(int argc, const char* argv[]) {
         }
     }
 
-
-
-
-
-
-
-
-
-
-
-
-    // //Load initial image and remove it from queue.
-    // cout << "creating first imagedata" << endl;
-    // ImageData *previousImage = new ImageData(cv::String(filesystem::canonical(imagePaths[0]).string()), cameraIntrinsic, initialPose);
-    // imagePaths.erase(imagePaths.begin());
-
-    // vector<cv::Point3f> prevPoints;
-    
-    // //Create image pairs.
-    // for (vector<filesystem::path>::const_iterator itr = imagePaths.begin(); itr != imagePaths.end(); ++itr) {
-    //     cv::String filePath = cv::String(filesystem::canonical(*itr).string()); //Get full file path, not relative.
-
-    //     ImageData *currentImage = new ImageData(filePath, cameraIntrinsic,  cv::Mat::zeros(3, 4, CV_64F));
-    //     ImageDataSet *imagePair = new ImageDataSet(previousImage, currentImage);
-    //     imageSets.push_back(imagePair);
-
-    //     vector<cv::Point3f> newPoints;
-
-    //     imagePoints.push_back(imagePair->points1); //Push back image 1's points. Image 2's points will be pushed back as next iterations' points1.
-
-    //     if (imageSets.size() == 1) {    //If it's the first image pair, all 3D points are new!
-    //         newPoints = imagePair->triangulatePoints(imagePair->points1, imagePair->points2);
-    //         points3D.insert(points3D.end(), newPoints.begin(), newPoints.end());
-                        
-    //         cameraMatrix.push_back(cv::Mat(cameraIntrinsic));    //Camera 1
-    //         cameraRotations.push_back(cv::Mat(previousImage->worldRotation));
-    //         cameraTranslations.push_back(cv::Mat(previousImage->worldTranslation));
-    //         distortionCoeffs.push_back(cv::Mat::zeros(5, 1, CV_64F));
-            
-    //         vector<int> cameraVisibilities;
-    //         cout << "Found N matches: " << newPoints.size() << endl;
-    //         for (int i = 0; i < newPoints.size(); i++) {
-    //             cameraVisibilities.push_back(1);    //All points are visible to both cameras.
-    //             //TODO: This might be wrong. We're assuming triangulated points are returned in the right order..
-    //             imageSets[imageSets.size()-1]->visibilityLocations[imageSets[imageSets.size()-1]->points2[i]] = i; 
-    //         }
-
-    //         visibility.push_back(cameraVisibilities); //Camera 1
-    //         visibility.push_back(cameraVisibilities); //Camera 2
-
-    //         //Setup for next iteration. this is normally copied from points.
-    //         prevPoints = imageSets[imageSets.size()-1]->triangulatePoints(imageSets[imageSets.size()-1]->points1, imageSets[imageSets.size()-1]->points2); 
-    //     } else {
-    //         vector<int> cameraVisibilities;
-    //         //Start by adding the new camera to the end of the camera list in visibility, initialised to all points not visible in this image (0)
-    //         for (int i = 0; i < visibility[0].size(); i++) {
-    //             cameraVisibilities.push_back(0);
-    //         }
-    //         visibility.push_back(cameraVisibilities);   //Add new line to the array.
-
-    //         vector<cv::Point3f> pair1MatchedPoints, pair2MatchedPoints;
-
-    //         //Triangulate points
-    //         //Todo: program flow needs to be adjusted so we're not redoing this all the time?
-    //         vector<cv::Point3f> prevPoints = imageSets[imageSets.size()-2]->triangulatePoints(imageSets[imageSets.size()-2]->points1, imageSets[imageSets.size()-2]->points2); 
-    //         vector<cv::Point3f> points = imagePair->triangulatePoints(imagePair->points1, imagePair->points2);
-            
-    //         int matches = 0;
-    //         for (int i = 0; i < imagePair->points1.size(); i++) {
-
-    //             cv::Point2f image1Point = imagePair->points1[i], image2Point = imagePair->points2[i];
-
-    //             //image1Point != previousPair[image2Point]. This is because points1/2 is not the same between pairs, as it's only GOOD matches for the pair,
-    //             //...not all of the possible matches.
-    //             //prevPairPoints2[prevPairPoint2Index] == image1Point
-    //             int prevPairPoint2Index;
-    //             vector<cv::Point2f> prevPairPoints2 = imageSets[imageSets.size()-2]->points2;
-    //             auto it = std::find(prevPairPoints2.begin(), prevPairPoints2.end(), image1Point);
-    //             if (it != prevPairPoints2.end()) {
-    //                 prevPairPoint2Index = std::distance(prevPairPoints2.begin(), it);
-    //             } else {
-    //                 continue;
-    //             }
-
-    //             std::map<cv::Point2f, int>::iterator visibilityLocation = imageSets[imageSets.size()-2]->visibilityLocations.find(image1Point);
-    //             // cout << "Trying to find a match for: " << image1Point << endl; 
-    //             if (visibilityLocation != imageSets[imageSets.size()-2]->visibilityLocations.end()) {
-    //                 matches++;
-
-    //                 //If the point exists in a previous imageset, then the 3D point has already been added to the list and we should
-    //                 //...append to that visibility list rather than making a new one.
-    //                 imageSets[imageSets.size()-1]->visibilityLocations[image2Point] = i;
-    //                 visibility[visibility.size() - 1][visibilityLocation->second] = 1;
-
-    //                 pair1MatchedPoints.push_back(prevPoints[prevPairPoint2Index]);  
-    //                 pair2MatchedPoints.push_back(points[i]);  
-
-    //                 cout << "New Pair of pairs: \n" << prevPairPoints2[prevPairPoint2Index] << endl << imagePair->points1[i] << endl;
-    //                 cout << "previous Point: " << prevPoints[prevPairPoint2Index] << endl;
-    //                 cout << "current Point: " << points[i] << endl;
-
-    //             } else { //New point, Only visible in the most recent image pair.
-    //                 // cout << "No Match Found" << endl;
-
-    //                 vector<int> cameraVisibilities;         
-    //                 for (int i = 0; i < visibility.size()-2; i++) { 
-    //                     visibility[i].push_back(0); 
-    //                 }
-
-    //                 visibility[visibility.size()-2].push_back(1);  //Camera 1
-    //                 visibility[visibility.size()-1].push_back(1);  //Camera 2
-    //             }
-    //         }
-
-    //         // recalculate relative transform with scaled local transform
-    //         if (pair1MatchedPoints.size() > 0) {
-    //             double i1Scale = 0, i2Scale = 0;
-
-    //             for (int i = 1; i < pair1MatchedPoints.size(); i++) {
-    //                 i1Scale += cv::norm(cv::Mat(pair1MatchedPoints[i-1]) - cv::Mat(pair1MatchedPoints[i]));
-    //                 i2Scale += cv::norm(cv::Mat(pair2MatchedPoints[i-1]) - cv::Mat(pair2MatchedPoints[i]));
-    //             }
-
-    //             double relativeScale = i1Scale/i2Scale;
-    //             cout << "image1->worldTranslation before" << imagePair->image1->worldTranslation << endl;
-    //             cout << "image2->worldTranslation before" << imagePair->image2->worldTranslation << endl;
-    //             cout << "i1Scale: " << i1Scale << ", i2Scale: " << i2Scale << ", relativeScale: " << relativeScale << endl;
-    //             cout << "relative translation before: " << imagePair->relativeTranslation << endl;
-
-    //             imagePair->relativeTranslation /= relativeScale;
-
-    //             // Recalculate projection matrix
-    //             // Construct a transformation mat from a translation and a rotation mat.
-    //             cv::Mat i1WorldTransformation = cv::Mat::eye(3, 4, CV_64F),
-    //                         relativeTransformation = cv::Mat::eye(3, 4, CV_64F);       
-    //             previousImage->worldRotation.copyTo(i1WorldTransformation.rowRange(0,3).colRange(0,3));
-    //             previousImage->worldTranslation.copyTo(i1WorldTransformation.rowRange(0,3).col(3));
-
-    //             imagePair->relativeRotation.copyTo(relativeTransformation.rowRange(0,3).colRange(0,3));
-    //             imagePair->relativeTranslation.copyTo(relativeTransformation.rowRange(0,3).col(3));
-
-    //             //Multiply the two transforms
-    //             cv::Mat result = cv::Mat::eye(3, 4, CV_64F);        
-    //             cv::multiply(i1WorldTransformation, relativeTransformation, result);
-
-    //             //Split back into separate rotations/translations.
-    //             currentImage->worldRotation = result.rowRange(0,3).colRange(0,3);
-    //             currentImage->worldTranslation = result.rowRange(0,3).col(3);
-
-    //             cout << "relative translation after: " << imagePair->relativeTranslation << endl;
-    //             cout << "image1->worldTranslation after" << imagePair->image1->worldTranslation << endl;
-    //             cout << "image2->worldTranslation after" << imagePair->image2->worldTranslation << endl;
-    //         }
-
-    //         //Retriangulate points
-    //         newPoints = imagePair->triangulatePoints(imagePair->points1, imagePair->points2);
-    //         points3D.insert(points3D.end(), newPoints.begin(), newPoints.end());
-    //     }
-
-    //     //DEBUG
-    //     glm::mat4 glmPose;
-    //     cv::Mat cvPose = cv::Mat::eye(4, 4, CV_64F);
-    //     currentImage->worldRotation.copyTo(cvPose.rowRange(0,3).colRange(0,3));
-    //     currentImage->worldTranslation.copyTo(cvPose.rowRange(0,3).col(3));
-
-    //     fromCV2GLM(cvPose, &glmPose);
-    //     glm::vec3 cameraPos = glm::vec3(glm::vec4(10.0) * glmPose).xyz;
-
-    //     // cout << "imageSets.size(): " << imageSets.size() << endl;
-    //     // cout << "Vector 3 Transformation: " << glm::to_string(cameraPos) << endl;
-    //     // cout << "Translation: " << currentImage->worldTranslation << endl;
-    //     // cout << "Rotation: " << currentImage->worldRotation << endl << endl;
-
-    //     cameraMatrix.push_back(cv::Mat(cameraIntrinsic));    //Camera 2
-    //     cameraRotations.push_back(currentImage->worldRotation);
-    //     cameraTranslations.push_back(currentImage->worldTranslation);
-    //     distortionCoeffs.push_back(cv::Mat::zeros(5, 1, CV_64F));
-
-    //     previousImage = currentImage;
-
-    //     runSBA();
-    // }
-
-    // for (int i = 0; i < cameraRotations.size() ; i++) {
-    //     glm::mat4 glmPose;
-    //     cv::Mat cvPose = cv::Mat::eye(4, 4, CV_64F); 
-    //     cameraRotations[i].copyTo(cvPose.rowRange(0,3).colRange(0,3));
-    //     cameraTranslations[i].copyTo(cvPose.rowRange(0,3).col(3));
-
-    //     fromCV2GLM(cvPose, &glmPose);
-
-    //     glm::vec3 cameraPos = glm::vec3(glm::vec4(1.0) * glmPose).xyz;
-    //     cout << "Camera Pose: " << glm::to_string(cameraPos) << endl;
-    //     cameraPosesToRender.push_back(cameraPos);
-    //     cameraColoursToRender.push_back(glm::vec3(  ((((double) rand() / (RAND_MAX))/0.7)+0.3), 
-    //                                                 ((((double) rand() / (RAND_MAX))/0.7)+0.3), 
-    //                                                 ((((double) rand() / (RAND_MAX))/0.7)+0.3)
-    //                                             ));
-    // }
-
-    // vector<glm::vec3> pointsToRender;
-    // for (int i = 0; i < points3D.size() ; i++) {
-    //     glm::vec3 glmPoint(points3D[i].x, points3D[i].y, points3D[i].z);
-    //     // cout << glm::to_string(glmPoint) << endl;
-    //     pointsToRender.push_back(glmPoint);
-    // }
-    
     renderEnvironment *renderer = new renderEnvironment();
     cout << "Initialised renderer" << endl;
         	

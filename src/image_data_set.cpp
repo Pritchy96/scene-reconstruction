@@ -52,46 +52,46 @@ using namespace std;
 // }
 
 ImageDataSet::ImageDataSet(ImageData *img1, ImageData *img2) {
-    image1 = img1; image2 = img2;
+    // image1 = img1; image2 = img2;
 
-    FindMatchingFeatures(true);
-    EstimateRelativePose();
+    // FindMatchingFeatures(true);
+    // EstimateRelativePose();
 
-    // if (!valid) {return;} //No Essential Matrix found.
-    //Calculate image2 world transform.
-    if (!valid) {
-         //If we can't decompose an essential matrix, just set the transform to the same one as the last image.
-         //...See if the Bundle Adjustment will compensate.
-         cout << "unable to decompose Essential matrix" << endl;
-        image2->worldTranslation = image1->worldTranslation;
-        image2->worldRotation = image1->worldRotation;
+    // // if (!valid) {return;} //No Essential Matrix found.
+    // //Calculate image2 world transform.
+    // if (!valid) {
+    //      //If we can't decompose an essential matrix, just set the transform to the same one as the last image.
+    //      //...See if the Bundle Adjustment will compensate.
+    //      cout << "unable to decompose Essential matrix" << endl;
+    //     image2->worldTranslation = image1->worldTranslation;
+    //     image2->worldRotation = image1->worldRotation;
 
-    }
-    else if (cv::countNonZero(image1->worldRotation) == 0 && cv::countNonZero(image1->worldTranslation) == 0) {
-        //If we're on the first image (no world tranform for previous image), then worldTransform = relativeTransform.
-        image2->worldTranslation = image1->worldTranslation;
-        image2->worldRotation = image1->worldRotation;
-    } else {
-        //Otherwise, the world tranform is the sum translation of all previous relative transforms to get the world transform of image1
-        //..plus the relative transform to get from image1 to image2
+    // }
+    // else if (cv::countNonZero(image1->worldRotation) == 0 && cv::countNonZero(image1->worldTranslation) == 0) {
+    //     //If we're on the first image (no world tranform for previous image), then worldTransform = relativeTransform.
+    //     image2->worldTranslation = image1->worldTranslation;
+    //     image2->worldRotation = image1->worldRotation;
+    // } else {
+    //     //Otherwise, the world tranform is the sum translation of all previous relative transforms to get the world transform of image1
+    //     //..plus the relative transform to get from image1 to image2
 
-        //Construct a transformation mat from a translation and a rotation mat.
-        cv::Mat i1WorldTransformation = cv::Mat::eye(3, 4, CV_64F),
-                    relativeTransformation = cv::Mat::eye(3, 4, CV_64F);       
-        image1->worldRotation.copyTo(i1WorldTransformation.rowRange(0,3).colRange(0,3));
-        image1->worldTranslation.copyTo(i1WorldTransformation.rowRange(0,3).colRange(3, 4));
-        relativeRotation.copyTo(relativeTransformation.rowRange(0,3).colRange(0,3));
-        relativeTranslation.copyTo(relativeTransformation.rowRange(0,3).colRange(3,4));
+    //     //Construct a transformation mat from a translation and a rotation mat.
+    //     cv::Mat i1WorldTransformation = cv::Mat::eye(3, 4, CV_64F),
+    //                 relativeTransformation = cv::Mat::eye(3, 4, CV_64F);       
+    //     image1->worldRotation.copyTo(i1WorldTransformation.rowRange(0,3).colRange(0,3));
+    //     image1->worldTranslation.copyTo(i1WorldTransformation.rowRange(0,3).colRange(3, 4));
+    //     relativeRotation.copyTo(relativeTransformation.rowRange(0,3).colRange(0,3));
+    //     relativeTranslation.copyTo(relativeTransformation.rowRange(0,3).colRange(3,4));
 
-        //Multiply the two transforms
-        cv::Mat result = cv::Mat::eye(3, 4, CV_64F);        
-        cv::multiply(i1WorldTransformation, relativeTransformation, result);
+    //     //Multiply the two transforms
+    //     cv::Mat result = cv::Mat::eye(3, 4, CV_64F);        
+    //     cv::multiply(i1WorldTransformation, relativeTransformation, result);
 
-        //Split back into separate rotations/translations.
-        image2->worldRotation = result.rowRange(0,3).colRange(0,3);
-        image2->worldTranslation = result.rowRange(0,3).col(3);
-        cout << endl << endl;
-    }
+    //     //Split back into separate rotations/translations.
+    //     image2->worldRotation = result.rowRange(0,3).colRange(0,3);
+    //     image2->worldTranslation = result.rowRange(0,3).col(3);
+    //     cout << endl << endl;
+    // }
 } 
 
 void ImageDataSet::FindMatchingFeatures(bool displayResults) {
@@ -216,28 +216,28 @@ void ImageDataSet::EstimateRelativePose() {
 }
 
 vector<cv::Point3f> ImageDataSet::TriangulatePoints(vector<cv::Point2f> image1Points, vector<cv::Point2f> image2Points) {
-    cv::Mat i1WorldTransformation = cv::Mat::eye(3, 4, CV_64FC1);
-    image1->worldRotation.copyTo(i1WorldTransformation.rowRange(0,3).colRange(0,3));
-    image1->worldTranslation.copyTo(i1WorldTransformation.rowRange(0,3).col(3));
+    // cv::Mat i1WorldTransformation = cv::Mat::eye(3, 4, CV_64FC1);
+    // image1->worldRotation.copyTo(i1WorldTransformation.rowRange(0,3).colRange(0,3));
+    // image1->worldTranslation.copyTo(i1WorldTransformation.rowRange(0,3).col(3));
 
-    cv::Mat i2WorldTransformation = cv::Mat::eye(3, 4, CV_64FC1);
-    image2->worldRotation.copyTo(i2WorldTransformation.rowRange(0,3).colRange(0,3));
-    image2->worldTranslation.copyTo(i2WorldTransformation.rowRange(0,3).col(3));
+    // cv::Mat i2WorldTransformation = cv::Mat::eye(3, 4, CV_64FC1);
+    // image2->worldRotation.copyTo(i2WorldTransformation.rowRange(0,3).colRange(0,3));
+    // image2->worldTranslation.copyTo(i2WorldTransformation.rowRange(0,3).col(3));
 
-    cv::Mat cameraIntrinsicDouble;
-    cv::Mat(image1->cameraIntrinsic).convertTo(cameraIntrinsicDouble, CV_64F);
+    // cv::Mat cameraIntrinsicDouble;
+    // cv::Mat(image1->cameraIntrinsic).convertTo(cameraIntrinsicDouble, CV_64F);
 
-    cv::Mat points;
-    cv::triangulatePoints(cameraIntrinsicDouble * i1WorldTransformation, cameraIntrinsicDouble * i2WorldTransformation, image1Points, image2Points, points);
+    // cv::Mat points;
+    // cv::triangulatePoints(cameraIntrinsicDouble * i1WorldTransformation, cameraIntrinsicDouble * i2WorldTransformation, image1Points, image2Points, points);
 
-    vector<cv::Point3f> points3D;
-    for (int i = 0; i < points.cols; i++) {
-        vector<cv::Point3f> p3d;
-        convertPointsFromHomogeneous(points.col(i).t(), p3d);
-        // cout << "x: " << p3d[0].x << ", y: " << p3d[0].y<< ", z: " << p3d[0].z << endl;
-        points3D.insert(points3D.end(), p3d.begin(), p3d.end());
-    }
-    return points3D;
+    // vector<cv::Point3f> points3D;
+    // for (int i = 0; i < points.cols; i++) {
+    //     vector<cv::Point3f> p3d;
+    //     convertPointsFromHomogeneous(points.col(i).t(), p3d);
+    //     // cout << "x: " << p3d[0].x << ", y: " << p3d[0].y<< ", z: " << p3d[0].z << endl;
+    //     points3D.insert(points3D.end(), p3d.begin(), p3d.end());
+    // }
+    // return points3D;
 }
 
 void ImageDataSet::DisplayMatches() {

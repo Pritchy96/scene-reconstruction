@@ -11,23 +11,23 @@
 
 using namespace std;
 
-ImageData::ImageData(cv::String imagePath, cv::Matx33d intrinsicMat, cv::InputArray translation, cv::InputArray rotation) {
-    worldTranslation = translation.getMat();
-    worldRotation = rotation.getMat();
+// ImageData::ImageData(cv::String imagePath, cv::Matx33d intrinsicMat, cv::InputArray translation, cv::InputArray rotation) {
+//     worldTranslation = translation.getMat();
+//     worldRotation = rotation.getMat();
 
-    SetupAndDetectKeyPoints(imagePath, intrinsicMat);
-}
+//     SetupAndDetectKeyPoints(imagePath, intrinsicMat);
+// }
 
-ImageData::ImageData(cv::String imagePath, cv::Matx33d intrinsicMat, cv::Mat _transformation) {
-    CV_Assert(_transformation.type() == CV_64F);
-    worldRotation = _transformation.rowRange(0,3).colRange(0,3);
-    worldTranslation = _transformation.rowRange(0,3).col(3);
+ImageData::ImageData(cv::String imagePath, cv::Matx33d intrinsicMat, cv::Mat _worldTransform) {
+    CV_Assert(_worldTransform.type() == CV_64F);
+    worldTransform = _worldTransform;
 
     SetupAndDetectKeyPoints(imagePath, intrinsicMat);
 }
 
 void ImageData::SetupAndDetectKeyPoints(cv::String imagePath, cv::Matx33d intrinsicMat) {
     image = cv::imread(imagePath, cv::IMREAD_ANYCOLOR);
+    cv::resize(image, image, image.size()/4);
     cameraIntrinsic = intrinsicMat;
 
     //Detect features in the image.
