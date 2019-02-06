@@ -27,11 +27,12 @@ ImageData::ImageData(cv::String imagePath, cv::Matx33d intrinsicMat, cv::Mat _wo
 
 void ImageData::SetupAndDetectKeyPoints(cv::String imagePath, cv::Matx33d intrinsicMat) {
     image = cv::imread(imagePath, cv::IMREAD_ANYCOLOR);
-    cv::resize(image, image, image.size()/4);
+    cv::resize(image, image, image.size()/10);
     cameraIntrinsic = intrinsicMat;
 
     //Detect features in the image.
     cv::Ptr<cv::Feature2D> orb = cv::ORB::create(5000);
+    // cv::Ptr<cv::AKAZE> orb = cv::AKAZE::create();
     orb->detectAndCompute(image, cv::Mat(), image_keypoints, image_descriptors);
 
     if (DEBUG_LOG) {

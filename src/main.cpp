@@ -210,18 +210,18 @@ vector<cv::Point3f> triangulatePoints(ImageData* image1, ImageData* image2, vect
 }
 
 void matchFeatures(int image1Index, int image2Index) {
-
     ImageData* image1 = images[image1Index]; 
     ImageData* image2 = images[image2Index];
 
     //Feature Match 
-        cv::FlannBasedMatcher matcher = cv::FlannBasedMatcher(cv::makePtr<cv::flann::LshIndexParams>(12, 20, 2));
+        // cv::FlannBasedMatcher matcher = cv::FlannBasedMatcher(cv::makePtr<cv::flann::LshIndexParams>(12, 20, 2));
+        cv::Ptr<cv::DescriptorMatcher> matcher = cv::DescriptorMatcher::create("BruteForce-Hamming");        
         // Match features between all images
         vector<cv::Point2f> initialMatchesP1, initialMatchesP2,  filteredMatchesP1, filteredMatchesP2;;
         vector<int> intialIndexesP1, intialIndexesP2, filteredIndexesP1, filteredIndexesP2;
         std::vector<std::vector<cv::DMatch>> knn_matches;
-        matcher.knnMatch((*image1).image_descriptors, (*image2).image_descriptors, knn_matches, 2);
-
+        std::vector<cv::DMatch> initialMatches, filteredMatches;
+        matcher->knnMatch((*image1).image_descriptors, (*image2).image_descriptors, knn_matches, 2);
 
     //Lowes Ratio Test Filter
         const float ratio_thresh = 0.7f;
@@ -233,6 +233,8 @@ void matchFeatures(int image1Index, int image2Index) {
                 //Store the indexes to avoid the problem of having keypoints not matching up when masked.
                 intialIndexesP1.push_back(knn_matches[i][0].queryIdx);
                 intialIndexesP2.push_back(knn_matches[i][0].trainIdx);
+
+                initialMatches.push_back(knn_matches[i][0]);
             }
         }
 
@@ -247,8 +249,20 @@ void matchFeatures(int image1Index, int image2Index) {
 
                 filteredMatchesP1.push_back(image1->image_keypoints[intialIndexesP1[k]].pt);
                 filteredMatchesP2.push_back(image2->image_keypoints[intialIndexesP2[k]].pt);
+
+                filteredMatches.push_back(initialMatches.at(k));
             }
         }
+
+
+        cv::Mat img_matches;
+        cv::drawMatches(image1->image, image1->image_keypoints, image2->image, image2->image_keypoints,
+            filteredMatches, img_matches, cv::Scalar::all(-1), cv::Scalar::all(-1),
+            vector<char>(), cv::DrawMatchesFlags::NOT_DRAW_SINGLE_POINTS );
+
+        //Show detected matches in an image viewer for debug purposes. 
+        cv::imshow("Good Matches", img_matches);
+        cv::waitKey(0); //Wait for a key to be hit to exit viewer.
 
 
     //Initial estimate for World Position of Image2
@@ -269,6 +283,8 @@ void matchFeatures(int image1Index, int image2Index) {
             auto corresponding3DPoint = previousPairImage2FeaturesToPoints3D.find(filteredMatchesP1[i]);
             
             if (corresponding3DPoint != previousPairImage2FeaturesToPoints3D.end()) {
+                // cout << points3DGuesses[corresponding3DPoint->second] << endl;
+
                 if(firstPair) {
                     //The first time we've found a set of three matched points, set them to guess 1 rather than 2.
                     previousPairGuess1 = points3DGuesses[corresponding3DPoint->second].back();
@@ -300,21 +316,17 @@ void matchFeatures(int image1Index, int image2Index) {
     for (int i = 0; i < currentPair3DGuesses.size(); i++) {
         auto corresponding3DPoint = previousPairImage2FeaturesToPoints3D.find(filteredMatchesP1[i]);
 
-        cout << "point: " << filteredMatchesP1[i] << "\n\n";
+        // cout << "point: " << filteredMatchesP1[i] << "\n\n";
 
-        for(auto it : previousPairImage2FeaturesToPoints3D) {
-            cout << it.first << " " << it.second << "\n";
-        }
-
-        cout << "\n" << endl;
-
+        // for(auto it : previousPairImage2FeaturesToPoints3D) {
+        //     cout << it.first << " " << it.second << "\n";
+        // }
 
         if (corresponding3DPoint != previousPairImage2FeaturesToPoints3D.end()) {
-            //Push back the new guess to the existing list of guesses.
-            auto corresponding3DPointGuess = previousPairImage2FeaturesToPoints3D.find(filteredMatchesP1[i]);
-            //int point3DGuessIndex = distance(points3DGuesses.begin(), points3DGuesses[corresponding3DPoint->second].back);
-
+            // int point3DGuessIndex = std::distance(points3DGuesses.begin(), points3DGuesses[corresponding3DPoint->second].back);
             points3DGuesses[corresponding3DPoint->second].push_back(currentPair3DGuesses[i]);
+
+            cout << "Point Guesses: " << points3DGuesses[corresponding3DPoint->second] << endl;
 
             //Create a binding from the image2 point to the index of the 3D guess list.                
             currentPairImage2FeaturesToPoints3D[filteredMatchesP2[i]] = corresponding3DPoint->second;
@@ -325,14 +337,19 @@ void matchFeatures(int image1Index, int image2Index) {
             points3DGuesses.push_back(newGuessList);
 
             //Create a binding from the image2 point to the index of the 3D guess list.
-            currentPairImage2FeaturesToPoints3D[filteredMatchesP2[i]] = points3DGuesses.size();
+            int new3DGuessindex =  points3DGuesses.size()-1;
+            currentPairImage2FeaturesToPoints3D[filteredMatchesP2[i]] = new3DGuessindex;
         }
+        
     }
 
-    previousPairImage2FeaturesToPoints3D.clear();
-    previousPairImage2FeaturesToPoints3D.insert(currentPairImage2FeaturesToPoints3D.begin(), currentPairImage2FeaturesToPoints3D.end());
+    // previousPairImage2FeaturesToPoints3D.clear();
+    // previousPairImage2FeaturesToPoints3D.insert(currentPairImage2FeaturesToPoints3D.begin(), currentPairImage2FeaturesToPoints3D.end());
+    // currentPairImage2FeaturesToPoints3D.clear();
+    previousPairImage2FeaturesToPoints3D = currentPairImage2FeaturesToPoints3D;
     currentPairImage2FeaturesToPoints3D.clear();
-    //previousPairImage2FeaturesToPoints3D = currentPairImage2FeaturesToPoints3D;
+
+    cout << previousPairImage2FeaturesToPoints3D.size() << endl;
 }
 
 int main(int argc, const char* argv[]) {
@@ -345,14 +362,12 @@ int main(int argc, const char* argv[]) {
 
     // Match features between all images
     for (int i = 0; i < images.size() - 1; i++) {
-        for (size_t j=i+1; j < images.size(); j++) {
-
-            matchFeatures(i, j);
-
-        }
+        // for (int j=i+1; j < images.size(); j++) {
+            matchFeatures(i, i+1);
+        // }
     }
-
     renderEnvironment *renderer = new renderEnvironment();
+
     cout << "Initialised renderer" << endl;
         	
     GLuint basicShader = Shader::LoadShaders("./bin/shaders/basic.vertshader", "./bin/shaders/basic.fragshader");
