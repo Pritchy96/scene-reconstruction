@@ -18,21 +18,21 @@ using namespace std;
 //     SetupAndDetectKeyPoints(imagePath, intrinsicMat);
 // }
 
-ImageData::ImageData(cv::String imagePath, cv::Matx33d intrinsicMat, cv::Mat _worldTransform) {
+ImageData::ImageData(cv::String imagePath, cv::Mat intrinsicMat, cv::Mat _worldTransform) {
     CV_Assert(_worldTransform.type() == CV_64F);
     worldTransform = _worldTransform;
 
     SetupAndDetectKeyPoints(imagePath, intrinsicMat);
 }
 
-void ImageData::SetupAndDetectKeyPoints(cv::String imagePath, cv::Matx33d intrinsicMat) {
+void ImageData::SetupAndDetectKeyPoints(cv::String imagePath, cv::Mat intrinsicMat) {
     image = cv::imread(imagePath, cv::IMREAD_ANYCOLOR);
-    cv::resize(image, image, image.size());
+    cv::resize(image, image, image.size()/4);
     cameraIntrinsic = intrinsicMat;
 
     //Detect features in the image.
-    cv::Ptr<cv::Feature2D> orb = cv::ORB::create(5000);
-    // cv::Ptr<cv::AKAZE> orb = cv::AKAZE::create();
+    // cv::Ptr<cv::Feature2D> orb = cv::ORB::create(5000);
+    cv::Ptr<cv::AKAZE> orb = cv::AKAZE::create();
     orb->detectAndCompute(image, cv::Mat(), image_keypoints, image_descriptors);
 
     if (DEBUG_LOG) {

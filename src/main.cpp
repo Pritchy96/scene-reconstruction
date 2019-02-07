@@ -20,18 +20,23 @@
 using namespace std;
 using namespace boost;
 
-const string imageDir = "./bin/data/dinoRing/";
+const string imageDir = "./bin/data/desk/";
 vector<string> acceptedExtensions = {".png", ".jpg", ".PNG", ".JPG"};
 
-const double FOCAL_LENGTH = 3310.400000; //focal length in pixels, after downsampling, guess from jpeg EXIF data
+const int IMAGE_DOWNSAMPLE = 4; // downsample the image to speed up processing
+const double FOCAL_LENGTH = 4308 / IMAGE_DOWNSAMPLE; // focal length in pixels, after downsampling, guess from jpeg EXIF data
+const int MIN_LANDMARK_SEEN = 3; // minimum number of camera views a 3d point (landmark) has to be seen to be used
+
+cv::Mat cameraIntrinsic;
+
 
 //Given with Dataset.
-const cv::Matx33d cameraIntrinsic (3310.400000f, 0.000000f, 320.0000f,
-                                0.000000f, 3325.500000f, 240.0000f,
-                                0.000000f, 0.000000f, 1.000000f);
+// const cv::Matx33d cameraIntrinsic (3310.400000f, 0.000000f, 320.0000f,
+//                                 0.000000f, 3325.500000f, 240.0000f,
+//                                 0.000000f, 0.000000f, 1.000000f);
 
-double initPose[]{-0.08661715685291285200, 0.97203145042392447000, 0.21829465483805316000, -0.97597093004059532000, -0.03881511324024737600,
-    -0.21441803766270939000, -0.19994795321325870000, -0.23162091782017200000, 0.95203517502501223000, -0.0526034704197, 0.023290917003, 0.659119498846};
+// double initPose[]{-0.08661715685291285200, 0.97203145042392447000, 0.21829465483805316000, -0.97597093004059532000, -0.03881511324024737600,
+//     -0.21441803766270939000, -0.19994795321325870000, -0.23162091782017200000, 0.95203517502501223000, -0.0526034704197, 0.023290917003, 0.659119498846};
 
 //Synthetic
 // //Given with Dataset.
@@ -135,6 +140,20 @@ void setupSBA() {
     params.fixedDistortion = 5;
     params.verbose = false;
     sba.setParams(params);
+}
+
+void setupIntrinsicMatrix() {
+        double cx = 5472/2;
+        double cy = 3648/2;
+
+        cv::Point2d pp(cx, cy);
+
+        cameraIntrinsic = cv::Mat::eye(3, 3, CV_64F);
+
+        cameraIntrinsic.at<double>(0,0) = FOCAL_LENGTH;
+        cameraIntrinsic.at<double>(1,1) = FOCAL_LENGTH;
+        cameraIntrinsic.at<double>(0,2) = cx;
+        cameraIntrinsic.at<double>(1,2) = cy;
 }
 
 bool loadImagesAndDetectFeatures() {
@@ -354,6 +373,7 @@ int main(int argc, const char* argv[]) {
     cout << "Launching Program" << endl;
 
 	srand (time(NULL));
+    setupIntrinsicMatrix();
     setupSBA();
 
     if (!loadImagesAndDetectFeatures()) return -1;
