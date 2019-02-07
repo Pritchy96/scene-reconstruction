@@ -1,4 +1,5 @@
 #include <iostream>
+#include <numeric>
 #include <chrono>
 #include <unordered_map>
 #include <boost/filesystem.hpp>
@@ -19,7 +20,7 @@
 using namespace std;
 using namespace boost;
 
-const string imageDir = "./bin/data/desk/";
+const string imageDir = "./bin/data/dinoRing/";
 vector<string> acceptedExtensions = {".png", ".jpg", ".PNG", ".JPG"};
 
 const double FOCAL_LENGTH = 3310.400000; //focal length in pixels, after downsampling, guess from jpeg EXIF data
@@ -53,14 +54,14 @@ vector<ImageData*> images;
 map<cv::Point2f, int> previousPairImage2FeaturesToPoints3D; 
 //A list of a list of guesses for each 3d Point. Each list gets averaged out to a single 3D point in points3D.
 vector<vector<cv::Point3f>> points3DGuesses;   
-vector<cv::Point3f> points3D;
+vector<glm::vec3> points3D;
+vector<glm::vec3> cameras3D;
 //List of a list of each images' detected features. This is not sparse; imagePoints[0][1] does not have to be equal to imagePoints[1][1] even if they do have a match!
 vector<vector<cv::Point2f>> imagePoints;    
 vector<vector<int>> visibility;  //for each image, is each 3D point represented by a 2D image feature. 1 if yes, 0 if not.
 vector<cv::Mat> cameraMatrix;  //The intrinsic matrix for each camera.
 vector<cv::Mat> cameraRotations;
 vector<cv::Mat> cameraTranslations;
-vector<glm::vec3> cameraPosesToRender, cameraColoursToRender;
 
 // struct KeypointIndexesAndTriangul￼atedPoint {
 //     int image1KeypointIndex;
@@ -266,8 +267,8 @@ void matchFeatures(int image1Index, int image2Index) {
 
 
     //Initial estimate for World Position of Image2
-        estimateWorldTransform(image1Index, image2Index, filteredMatchesP1, filteredMatchesP2);
-    
+        cv::Mat localTransform = estimateRelativeTransform(images[image1Index], images[image2Index], filteredMatchesP1, filteredMatchesP2);
+        images[image2Index]->worldTransform = images[image1Index]->worldTransform * localTransform;
 
     //Triangulate initial guesses for Image2
         vector<cv::Point3f> currentPair3DGuesses = triangulatePoints(image1, image2, filteredMatchesP1, filteredMatchesP2);
@@ -278,17 +279,16 @@ void matchFeatures(int image1Index, int image2Index) {
     //Calculate scale factor based on previous points
         cv::Point3f previousPairGuess1, previousPairGuess2, currentPairGuess1, currentPairGuess2; 
         bool firstPair = true;
-        int previousPairScale, currentPairScale;
+        double previousPairScale = 0, currentPairScale = 0;
+        int count;
         for (int i = 0; i < currentPair3DGuesses.size(); i++) {
             auto corresponding3DPoint = previousPairImage2FeaturesToPoints3D.find(filteredMatchesP1[i]);
-            
             if (corresponding3DPoint != previousPairImage2FeaturesToPoints3D.end()) {
-                // cout << points3DGuesses[corresponding3DPoint->second] << endl;
-
                 if(firstPair) {
                     //The first time we've found a set of three matched points, set them to guess 1 rather than 2.
                     previousPairGuess1 = points3DGuesses[corresponding3DPoint->second].back();
                     currentPairGuess1 = currentPair3DGuesses[i];
+                    firstPair = false;
                 } else {
                     //We have two points matched across each pair, we can do scaling.
                     previousPairGuess2 = points3DGuesses[corresponding3DPoint->second].back();
@@ -296,6 +296,7 @@ void matchFeatures(int image1Index, int image2Index) {
 
                     previousPairScale += cv::norm(cv::Mat(previousPairGuess1) - cv::Mat(previousPairGuess2));
                     currentPairScale += cv::norm(cv::Mat(currentPairGuess1) - cv::Mat(currentPairGuess2));
+                    count++;
 
                     previousPairGuess1 = previousPairGuess2;
                     currentPairGuess1 = currentPairGuess2;
@@ -305,28 +306,31 @@ void matchFeatures(int image1Index, int image2Index) {
 
         if (previousPairScale != 0 && currentPairScale != 0) {
             //Scale
+            double scaleFactor = (previousPairScale / currentPairScale) / count;
+
+            cout << "previous Scale: " << previousPairScale 
+                 << ", current Scale: " << currentPairScale 
+                 << "\nScaleFactor: " << scaleFactor << endl;
+
             //Adjust estimate for World Position of Image2
+            localTransform *= scaleFactor;
+            images[image2Index]->worldTransform = images[image1Index]->worldTransform * localTransform;
+
             //Retriangulate Points
+                currentPair3DGuesses = triangulatePoints(image1, image2, filteredMatchesP1, filteredMatchesP2);
+                int good_matches = cv::sum(mask)[0];
+                assert(good_matches >= 10);
         }
 
-        // cout << "previous Scale: " << previousPairScale << ", current Scale: " << currentPairScale << endl;
 
     // Put points into final structure.
     map<cv::Point2f, int> currentPairImage2FeaturesToPoints3D;
     for (int i = 0; i < currentPair3DGuesses.size(); i++) {
         auto corresponding3DPoint = previousPairImage2FeaturesToPoints3D.find(filteredMatchesP1[i]);
 
-        // cout << "point: " << filteredMatchesP1[i] << "\n\n";
-
-        // for(auto it : previousPairImage2FeaturesToPoints3D) {
-        //     cout << it.first << " " << it.second << "\n";
-        // }
-
         if (corresponding3DPoint != previousPairImage2FeaturesToPoints3D.end()) {
             // int point3DGuessIndex = std::distance(points3DGuesses.begin(), points3DGuesses[corresponding3DPoint->second].back);
             points3DGuesses[corresponding3DPoint->second].push_back(currentPair3DGuesses[i]);
-
-            cout << "Point Guesses: " << points3DGuesses[corresponding3DPoint->second] << endl;
 
             //Create a binding from the image2 point to the index of the 3D guess list.                
             currentPairImage2FeaturesToPoints3D[filteredMatchesP2[i]] = corresponding3DPoint->second;
@@ -339,17 +343,11 @@ void matchFeatures(int image1Index, int image2Index) {
             //Create a binding from the image2 point to the index of the 3D guess list.
             int new3DGuessindex =  points3DGuesses.size()-1;
             currentPairImage2FeaturesToPoints3D[filteredMatchesP2[i]] = new3DGuessindex;
-        }
-        
+        }   
     }
 
-    // previousPairImage2FeaturesToPoints3D.clear();
-    // previousPairImage2FeaturesToPoints3D.insert(currentPairImage2FeaturesToPoints3D.begin(), currentPairImage2FeaturesToPoints3D.end());
-    // currentPairImage2FeaturesToPoints3D.clear();
     previousPairImage2FeaturesToPoints3D = currentPairImage2FeaturesToPoints3D;
     currentPairImage2FeaturesToPoints3D.clear();
-
-    cout << previousPairImage2FeaturesToPoints3D.size() << endl;
 }
 
 int main(int argc, const char* argv[]) {
@@ -366,13 +364,28 @@ int main(int argc, const char* argv[]) {
             matchFeatures(i, i+1);
         // }
     }
+
+    for (int i = 0; i < points3DGuesses.size(); i++) {
+        vector<cv::Point3f> currentPointGuesses = points3DGuesses[i];
+        cv::Point3f averagedPoint;
+        if (currentPointGuesses.size() > 3) {
+            for (int j = 0; j < currentPointGuesses.size(); j++) {
+                averagedPoint += currentPointGuesses[j];
+            }
+            averagedPoint /= ((float) currentPointGuesses.size());
+            cout << averagedPoint << endl;
+            // averagedPoint *= 10.0f;
+            points3D.push_back(glm::vec3(averagedPoint.x, averagedPoint.y, averagedPoint.z));
+        }
+    }
+
     renderEnvironment *renderer = new renderEnvironment();
 
     cout << "Initialised renderer" << endl;
         	
     GLuint basicShader = Shader::LoadShaders("./bin/shaders/basic.vertshader", "./bin/shaders/basic.fragshader");
-	renderer->addRenderable(new Renderable(basicShader, cameraPosesToRender, cameraColoursToRender, GL_POINTS));
-	// renderer->addRenderable(new Renderable(basicShader, pointsToRender, pointsToRender, GL_POINTS));
+	// renderer->addRenderable(new Renderable(basicShader, cameraPosesToRender, cameraColoursToRender, GL_POINTS));
+	renderer->addRenderable(new Renderable(basicShader, points3D, points3D, GL_POINTS));
 
     while (true) {  //TODO: Write proper update & exit logic.
 		oldTime = newTime;

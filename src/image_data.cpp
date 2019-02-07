@@ -27,7 +27,7 @@ ImageData::ImageData(cv::String imagePath, cv::Matx33d intrinsicMat, cv::Mat _wo
 
 void ImageData::SetupAndDetectKeyPoints(cv::String imagePath, cv::Matx33d intrinsicMat) {
     image = cv::imread(imagePath, cv::IMREAD_ANYCOLOR);
-    cv::resize(image, image, image.size()/10);
+    cv::resize(image, image, image.size());
     cameraIntrinsic = intrinsicMat;
 
     //Detect features in the image.
