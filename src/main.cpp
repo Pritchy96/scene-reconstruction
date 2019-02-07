@@ -23,12 +23,10 @@ using namespace boost;
 const string imageDir = "./bin/data/desk/";
 vector<string> acceptedExtensions = {".png", ".jpg", ".PNG", ".JPG"};
 
-const int IMAGE_DOWNSAMPLE = 4; // downsample the image to speed up processing
-const double FOCAL_LENGTH = 4308 / IMAGE_DOWNSAMPLE; // focal length in pixels, after downsampling, guess from jpeg EXIF data
-const int MIN_LANDMARK_SEEN = 3; // minimum number of camera views a 3d point (landmark) has to be seen to be used
+const int SCALE_FACTOR = 4;
+const double FOCAL_LENGTH = 4308 / SCALE_FACTOR; // focal length in pixels, after downsampling, guess from jpeg EXIF data
 
-cv::Mat cameraIntrinsic;
-
+cv::Mat cameraIntrinsic;    //Assume all camera intrinsics are equal for now.
 
 //Given with Dataset.
 // const cv::Matx33d cameraIntrinsic (3310.400000f, 0.000000f, 320.0000f,
@@ -142,9 +140,9 @@ void setupSBA() {
     sba.setParams(params);
 }
 
-void setupIntrinsicMatrix() {
-        double cx = 5472/2;
-        double cy = 3648/2;
+void setupIntrinsicMatrix(int imageWidth, int imageHeight) {
+        double cx = imageWidth/2;
+        double cy = imageHeight/2;
 
         cv::Point2d pp(cx, cy);
 
@@ -172,7 +170,14 @@ bool loadImagesAndDetectFeatures() {
     for (vector<filesystem::path>::const_iterator itr = imagePaths.begin(); itr != imagePaths.end(); ++itr) {
         cv::String filePath = cv::String(filesystem::canonical(*itr).string()); //Get full file path, not relative.
 
-        ImageData *currentImage = new ImageData(filePath, cameraIntrinsic,  cv::Mat::eye(3, 4, CV_64F));
+        cv::Mat image = cv::imread(filePath, cv::IMREAD_ANYCOLOR);
+        cv::resize(image, image, image.size()/SCALE_FACTOR);
+
+        if (images.size() == 0) {
+            setupIntrinsicMatrix(image.size().width, image.size().height);
+        }
+
+        ImageData *currentImage = new ImageData(image, cameraIntrinsic,  cv::Mat::eye(3, 4, CV_64F));
         images.push_back(currentImage);
     }
     return 1;
@@ -373,7 +378,6 @@ int main(int argc, const char* argv[]) {
     cout << "Launching Program" << endl;
 
 	srand (time(NULL));
-    setupIntrinsicMatrix();
     setupSBA();
 
     if (!loadImagesAndDetectFeatures()) return -1;

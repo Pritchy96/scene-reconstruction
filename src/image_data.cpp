@@ -18,17 +18,17 @@ using namespace std;
 //     SetupAndDetectKeyPoints(imagePath, intrinsicMat);
 // }
 
-ImageData::ImageData(cv::String imagePath, cv::Mat intrinsicMat, cv::Mat _worldTransform) {
+ImageData::ImageData(cv::Mat _image, cv::Mat _cameraIntrinsic, cv::Mat _worldTransform) {
+    image = _image;
+
     CV_Assert(_worldTransform.type() == CV_64F);
     worldTransform = _worldTransform;
+    cameraIntrinsic = _cameraIntrinsic;
 
-    SetupAndDetectKeyPoints(imagePath, intrinsicMat);
+    SetupAndDetectKeyPoints();
 }
 
-void ImageData::SetupAndDetectKeyPoints(cv::String imagePath, cv::Mat intrinsicMat) {
-    image = cv::imread(imagePath, cv::IMREAD_ANYCOLOR);
-    cv::resize(image, image, image.size()/4);
-    cameraIntrinsic = intrinsicMat;
+void ImageData::SetupAndDetectKeyPoints() {
 
     //Detect features in the image.
     // cv::Ptr<cv::Feature2D> orb = cv::ORB::create(5000);

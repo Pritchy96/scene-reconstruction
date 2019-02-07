@@ -10,7 +10,7 @@
 
     class ImageData {
         public:
-            cv::Mat image,
+            cv::Mat image, 
                 image_descriptors;  //Characteristics of the keypoints
             cv::Mat cameraIntrinsic;
             std::vector<cv::KeyPoint> image_keypoints;
@@ -18,10 +18,10 @@
             glm::vec3 lineColour;
             static const bool DEBUG_LOG = true;
 
-            ImageData(cv::String imagePath, cv::Mat intrinsicMat, cv::InputArray translation, cv::InputArray rotation);
-            ImageData(cv::String imagePath, cv::Mat intrinsicMat, cv::Mat _transformation);
+            // ImageData(cv::Mat _image, cv::Mat intrinsicMat, cv::InputArray translation, cv::InputArray rotation);
+            ImageData(cv::Mat _image, cv::Mat _cameraIntrinsic, cv::Mat _worldTransform);
         private:
-            void SetupAndDetectKeyPoints(cv::String imagePath, cv::Mat intrinsicMat);
+            void SetupAndDetectKeyPoints();
     };
 
 #endif
