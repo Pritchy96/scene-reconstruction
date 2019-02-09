@@ -16,7 +16,7 @@
             std::vector<cv::KeyPoint> image_keypoints;
             cv::Mat worldTransform;
             glm::vec3 lineColour;
-            static const bool DEBUG_LOG = true;
+            static const bool DEBUG_LOG = false;
 
             // ImageData(cv::Mat _image, cv::Mat intrinsicMat, cv::InputArray translation, cv::InputArray rotation);
             ImageData(cv::Mat _image, cv::Mat _cameraIntrinsic, cv::Mat _worldTransform);

@@ -56,25 +56,14 @@ double deltaT;
 vector<ImageData*> images;
 map<cv::Point2f, int> previousPairImage2FeaturesToPoints3D; 
 //A list of a list of guesses for each 3d Point. Each list gets averaged out to a single 3D point in points3D.
-vector<vector<cv::Point3f>> points3DGuesses;   
-vector<glm::vec3> points3D;
-vector<glm::vec3> cameras3D;
+vector<vector<cv::Point3f>> points3DGuesses, points3DColours;
+vector<glm::vec3> points3D, pointColours, cameras3D;
 //List of a list of each images' detected features. This is not sparse; imagePoints[0][1] does not have to be equal to imagePoints[1][1] even if they do have a match!
 vector<vector<cv::Point2f>> imagePoints;    
 vector<vector<int>> visibility;  //for each image, is each 3D point represented by a 2D image feature. 1 if yes, 0 if not.
 vector<cv::Mat> cameraMatrix;  //The intrinsic matrix for each camera.
 vector<cv::Mat> cameraRotations;
 vector<cv::Mat> cameraTranslations;
-
-// struct KeypointIndexesAndTriangul￼atedPoint {
-//     int image1KeypointIndex;
-//     int image2KeypointIndex;
-//     cv::Point3f Point3DGuess;
-// };
-
-// struct LocalTransform {
-//     cv::Mat rotation, translation;
-// };
 
 void fromCV2GLM(const cv::Mat& cvmat, glm::mat3* glmmat) {
     //Basic conversion method adapted from: https://stackoverflow.com/questions/44409443/how-a-cvmat-translate-from-to-a-glmmat4
@@ -286,8 +275,8 @@ void matchFeatures(int image1Index, int image2Index) {
             vector<char>(), cv::DrawMatchesFlags::NOT_DRAW_SINGLE_POINTS );
 
         //Show detected matches in an image viewer for debug purposes. 
-        cv::imshow("Good Matches", img_matches);
-        cv::waitKey(0); //Wait for a key to be hit to exit viewer.
+        // cv::imshow("Good Matches", img_matches);
+        // cv::waitKey(0); //Wait for a key to be hit to exit viewer.
 
 
     //Initial estimate for World Position of Image2
@@ -352,9 +341,20 @@ void matchFeatures(int image1Index, int image2Index) {
     for (int i = 0; i < currentPair3DGuesses.size(); i++) {
         auto corresponding3DPoint = previousPairImage2FeaturesToPoints3D.find(filteredMatchesP1[i]);
 
+        cv::Point3f mixedColour;
+        //average colour
+        cv::Vec3b col1 = image1->image.at<cv::Vec3b>(filteredMatchesP1[i].y, filteredMatchesP1[i].x),
+                    col2 = image2->image.at<cv::Vec3b>(filteredMatchesP2[i].y, filteredMatchesP2[i].x);
+        
+        
+        mixedColour += cv::Point3f(col1.val[0], col1.val[1], col1.val[2]);
+        mixedColour += cv::Point3f(col2.val[0], col2.val[1], col2.val[2]);
+        mixedColour /= 2;
+
         if (corresponding3DPoint != previousPairImage2FeaturesToPoints3D.end()) {
             // int point3DGuessIndex = std::distance(points3DGuesses.begin(), points3DGuesses[corresponding3DPoint->second].back);
             points3DGuesses[corresponding3DPoint->second].push_back(currentPair3DGuesses[i]);
+            points3DColours[corresponding3DPoint->second].push_back(mixedColour);
 
             //Create a binding from the image2 point to the index of the 3D guess list.                
             currentPairImage2FeaturesToPoints3D[filteredMatchesP2[i]] = corresponding3DPoint->second;
@@ -363,6 +363,10 @@ void matchFeatures(int image1Index, int image2Index) {
             vector<cv::Point3f> newGuessList;
             newGuessList.push_back(currentPair3DGuesses[i]);
             points3DGuesses.push_back(newGuessList);
+
+            vector<cv::Point3f> newColourList;
+            newColourList.push_back(mixedColour);
+            points3DColours.push_back(newColourList);
 
             //Create a binding from the image2 point to the index of the 3D guess list.
             int new3DGuessindex =  points3DGuesses.size()-1;
@@ -384,22 +388,21 @@ int main(int argc, const char* argv[]) {
 
     // Match features between all images
     for (int i = 0; i < images.size() - 1; i++) {
-        // for (int j=i+1; j < images.size(); j++) {
-            matchFeatures(i, i+1);
-        // }
+        matchFeatures(i, i+1);
     }
 
     for (int i = 0; i < points3DGuesses.size(); i++) {
-        vector<cv::Point3f> currentPointGuesses = points3DGuesses[i];
-        cv::Point3f averagedPoint;
+        vector<cv::Point3f> currentPointGuesses = points3DGuesses[i], currentPointColours = points3DColours[i];
+        cv::Point3f averagedPoint, averagedColour;
         if (currentPointGuesses.size() > 3) {
             for (int j = 0; j < currentPointGuesses.size(); j++) {
                 averagedPoint += currentPointGuesses[j];
+                averagedColour += currentPointColours[j];
             }
             averagedPoint /= ((float) currentPointGuesses.size());
-            cout << averagedPoint << endl;
-            // averagedPoint *= 10.0f;
+            averagedColour /= ((float) currentPointColours.size());
             points3D.push_back(glm::vec3(averagedPoint.x, averagedPoint.y, averagedPoint.z));
+            pointColours.push_back(glm::vec3(averagedColour.x/255.0f, averagedColour.y/255.0f, averagedColour.z/255.0f));
         }
     }
 
@@ -409,7 +412,7 @@ int main(int argc, const char* argv[]) {
         	
     GLuint basicShader = Shader::LoadShaders("./bin/shaders/basic.vertshader", "./bin/shaders/basic.fragshader");
 	// renderer->addRenderable(new Renderable(basicShader, cameraPosesToRender, cameraColoursToRender, GL_POINTS));
-	renderer->addRenderable(new Renderable(basicShader, points3D, points3D, GL_POINTS));
+	renderer->addRenderable(new Renderable(basicShader, points3D, pointColours, GL_POINTS));
 
     while (true) {  //TODO: Write proper update & exit logic.
 		oldTime = newTime;
