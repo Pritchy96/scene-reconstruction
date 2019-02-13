@@ -14,7 +14,7 @@
                 image_descriptors;  //Characteristics of the keypoints
             cv::Mat cameraIntrinsic;
             std::vector<cv::KeyPoint> image_keypoints;
-            cv::Mat worldTransform;
+            cv::Mat worldTransform, projectionMatrix = cv::Mat::eye(3, 4, CV_64FC1);
             glm::vec3 lineColour;
             static const bool DEBUG_LOG = false;
 
