@@ -282,8 +282,8 @@ void matchFeatures(int image1Index, int image2Index) {
     //Calculate scale factor based on previous points
         cv::Point3f previousPairGuess1, previousPairGuess2, currentPairGuess1, currentPairGuess2; 
         bool firstPair = true;
-        double previousPairScale = 0, currentPairScale = 0, scaleFactor;
-        int count;
+        double previousPairScale = 0, currentPairScale = 0, scaleFactor = 0;
+        int count = 0;
         for (int i = 0; i < currentPair3DGuesses.size(); i++) {
             auto corresponding3DPoint = previousPairImage2FeaturesToPoints3D.find(filteredMatchesP1[i]);
             if (corresponding3DPoint != previousPairImage2FeaturesToPoints3D.end()) {
