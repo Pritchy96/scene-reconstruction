@@ -23,7 +23,7 @@ using namespace boost;
 vector<string> acceptedExtensions = {".png", ".jpg", ".PNG", ".JPG"};
 
 const string imageDir = "./bin/data/desk/";
-const int IMAGE_DOWNSCALE_FACTOR = 4, MIN_GUESSES_COUNT = 2, IMAGES_TO_PROCESS = 99;
+const int IMAGE_DOWNSCALE_FACTOR = 4, MIN_GUESSES_COUNT = 3, IMAGES_TO_PROCESS = 99;
 const double FOCAL_LENGTH = 4308 / IMAGE_DOWNSCALE_FACTOR;
 const float SCALE_FACTOR = 10.0f;
 //4308 Desk
@@ -142,8 +142,10 @@ bool loadImagesAndDetectFeatures() {
     for (vector<filesystem::path>::const_iterator itr = imagePaths.begin(); itr != imagePaths.end(); ++itr) {
         cv::String filePath = cv::String(filesystem::canonical(*itr).string()); //Get full file path, not relative.
 
-        cv::Mat image = cv::imread(filePath, cv::COLOR_BGR2GRAY);
+        cv::Mat image = cv::imread(filePath, cv::IMREAD_ANYCOLOR);
         cv::resize(image, image, image.size()/IMAGE_DOWNSCALE_FACTOR);
+        // cvtColor(image, image, cv::COLOR_BGR2GRAY);  //Convert to greyscale for better sampling
+
 
         if (images.size() == 0) {
             setupIntrinsicMatrix(image.size().width, image.size().height);
@@ -151,10 +153,10 @@ bool loadImagesAndDetectFeatures() {
 
         ImageData *currentImage = new ImageData(image, cameraIntrinsic,  cv::Mat::eye(3, 4, CV_64F));
 
-        if (images.size() == 0) {
+        if (images.size() == 0) {   //Setup first image
             currentImage->projectionMatrix = currentImage->cameraIntrinsic  * currentImage->projectionMatrix;
+            currentImage->worldTransform = cv::Mat::eye(4, 4, CV_64F);
         }
-
 
         images.push_back(currentImage);
     }
@@ -166,8 +168,7 @@ cv::Mat estimateRelativeTransform(ImageData* image1, ImageData* image2, vector<c
     double focal = cv::Mat(image1->cameraIntrinsic).at<double>(0,0);
     cv::Mat mask;
 
-    cv::Mat essentialMat = cv::findEssentialMat(cv::Mat(image2Points), cv::Mat(image1Points), focal,
-                                                    pp, cv::RANSAC, 0.999, 1.0, mask);
+    cv::Mat essentialMat = cv::findEssentialMat(image2Points, image1Points, focal, pp, cv::RANSAC, 0.999, 1.0, mask);
 
     //OpenCV returns a non 3x3 matrix if it can't derive an Essential Matrix.
     assert(essentialMat.cols == 3 && essentialMat.rows == 3);
@@ -189,10 +190,9 @@ void estimateWorldTransform(cv::Mat relativeTransform, int image1Index, int imag
     cv::Mat rotationMatrix = images[image2Index]->worldTransform(cv::Range(0, 3), cv::Range(0, 3));
     cv::Mat translationMatrix = images[image2Index]->worldTransform(cv::Range(0, 3), cv::Range(3, 4));
     
-    cv::Mat projectionMatrix(3, 4, CV_64F);  
-    cv::Mat invertedRotation = rotationMatrix.t();   //The rotation of B with respect to A, rahter than A with respect to B.
-    projectionMatrix(cv::Range(0, 3), cv::Range(0, 3)) = invertedRotation;
-    projectionMatrix(cv::Range(0, 3), cv::Range(3, 4)) = -invertedRotation * translationMatrix;
+    cv::Mat projectionMatrix(3, 4, CV_64F);
+    projectionMatrix(cv::Range(0, 3), cv::Range(0, 3)) = rotationMatrix.t(); //The rotation of B with respect to A, rather than A with respect to B.
+    projectionMatrix(cv::Range(0, 3), cv::Range(3, 4)) = -rotationMatrix.t() * translationMatrix;
     images[image2Index]->projectionMatrix = images[image2Index]->cameraIntrinsic  * projectionMatrix;
 }
 
@@ -311,7 +311,6 @@ void matchFeatures(int image1Index, int image2Index) {
         }
 
         if (previousPairScale != 0 && currentPairScale != 0) {
-            //Scale
             scaleFactor /= count;
 
             cout << "previous Scale: " << previousPairScale << ", current Scale: " << currentPairScale << "\nScaleFactor: " << scaleFactor << endl;
