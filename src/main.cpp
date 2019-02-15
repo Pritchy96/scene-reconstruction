@@ -20,39 +20,18 @@
 using namespace std;
 using namespace boost;
 
-const string imageDir = "./bin/data/synthetic1_images/";
 vector<string> acceptedExtensions = {".png", ".jpg", ".PNG", ".JPG"};
 
-const int IMAGE_DOWNSCALE_FACTOR = 1, MIN_GUESSES_COUNT = 1, IMAGES_TO_PROCESS = 2;
-const double FOCAL_LENGTH = 851.01 / IMAGE_DOWNSCALE_FACTOR; // focal length in pixels, after downsampling, guess from jpeg EXIF data
+const string imageDir = "./bin/data/desk/";
+const int IMAGE_DOWNSCALE_FACTOR = 4, MIN_GUESSES_COUNT = 2, IMAGES_TO_PROCESS = 99;
+const double FOCAL_LENGTH = 4308 / IMAGE_DOWNSCALE_FACTOR;
 const float SCALE_FACTOR = 10.0f;
 //4308 Desk
 //9318.70967742 Doll
 //3310.4 Dino
 //851.01 Synthetic
+
 cv::Mat cameraIntrinsic;    //Assume all camera intrinsics are equal for now.
-
-
-//Given with Dataset.
-// const cv::Matx33d cameraIntrinsic (3310.400000f, 0.000000f, 320.0000f,
-//                                 0.000000f, 3325.500000f, 240.0000f,
-//                                 0.000000f, 0.000000f, 1.000000f);
-
-// double initPose[]{-0.08661715685291285200, 0.97203145042392447000, 0.21829465483805316000, -0.97597093004059532000, -0.03881511324024737600,
-//     -0.21441803766270939000, -0.19994795321325870000, -0.23162091782017200000, 0.95203517502501223000, -0.0526034704197, 0.023290917003, 0.659119498846};
-
-//Synthetic
-// //Given with Dataset.
-// const cv::Matx33d cameraIntrinsic (851.01, 0.000, 796.5,
-//                                     0.000, 851.01, 352.5,
-//                                     0.000, 0.000, 1.000);
-
-// double initPose[]{0.977755, 0, 0.209751,
-//                     0.177552, 0.532404, -0.827659,
-//                     -0.111672, 0.846489, 0.52056,
-//                     0, 0, -610.999
-// };
-
 cv::Mat initialPose = cv::Mat::eye(3, 4, CV_64F);
 
 auto oldTime = chrono::steady_clock::now(), newTime = chrono::steady_clock::now();
@@ -93,29 +72,29 @@ void fromCV2GLM(const cv::Mat& cvmat, glm::mat4* glmmat) {
 
 void runSBA() {
         // if (imageSets.size() > 1) { //Only run if images > 2
-            // run sba optimization
-            // cout << "visibility " << endl;
-            // for (vector<vector<int>>::const_iterator i = visibility.begin(); i != visibility.end(); ++i) {
-            //     for (vector<int>::const_iterator j = (*i).begin(); j != (*i).end(); ++j) {
-            //         cout << *j << ", ";
-            //     }
-            // cout << endl;
-            // }
+        //     // run sba optimization
+        //     cout << "visibility " << endl;
+        //     for (vector<vector<int>>::const_iterator i = visibility.begin(); i != visibility.end(); ++i) {
+        //         for (vector<int>::const_iterator j = (*i).begin(); j != (*i).end(); ++j) {
+        //             cout << *j << ", ";
+        //         }
+        //     cout << endl;
+        //     }
             
-            // cout << "points3D " << endl;
-            // for (vector<cv::Point3f>::const_iterator itr = points3D.begin(); itr != points3D.end(); ++itr) {
-            //     cout << *itr << endl;
-            // }
+        //     cout << "points3D " << endl;
+        //     for (vector<cv::Point3f>::const_iterator itr = points3D.begin(); itr != points3D.end(); ++itr) {
+        //         cout << *itr << endl;
+        //     }
 
-            // try {
-                // sba.run( points3D, imagePoints, visibility, cameraMatrix, cameraRotations, cameraTranslations, distortionCoeffs);
-            // } catch (cv::Exception) {
+        //     try {
+        //         sba.run( points3D, imagePoints, visibility, cameraMatrix, cameraRotations, cameraTranslations, distortionCoeffs);
+        //     } catch (cv::Exception) {
 
-            // }
+        //     }
 
-            //     cout << "relative translation after BA: " << imagePair->relativeTranslation << endl;
-            //     cout << "image1->worldTranslation after BA" << imagePair->image1->worldTranslation << endl;
-            //     cout << "image2->worldTranslation after BA" << imagePair->image2->worldTranslation << endl;
+        //         cout << "relative translation after BA: " << imagePair->relativeTranslation << endl;
+        //         cout << "image1->worldTranslation after BA" << imagePair->image1->worldTranslation << endl;
+        //         cout << "image2->worldTranslation after BA" << imagePair->image2->worldTranslation << endl;
 
         // }
 }
@@ -145,19 +124,6 @@ void setupIntrinsicMatrix(int imageWidth, int imageHeight) {
         cameraIntrinsic.at<double>(1,1) = FOCAL_LENGTH;
         cameraIntrinsic.at<double>(0,2) = cx;
         cameraIntrinsic.at<double>(1,2) = cy;
-
-        // cameraIntrinsic.at<double>(0,0) = 3310.400000f;
-        // cameraIntrinsic.at<double>(1,1) = 3325.500000f;
-        // cameraIntrinsic.at<double>(0,2) = 320.0f;
-        // cameraIntrinsic.at<double>(1,2) = 240.0f;
-        // (331        // (3310.400000f, 0.000000f, 320.0000f,
-        //                         0.000000f, 3325.500000f, 240.0000f,
-        //                         0.000000f, 0.000000f, 1.000000f);0.400000f, 0.000000f, 320.0000f,
-        //                         0.000000f, 3325.500000f, 240.0000f,
-        //                         0.000000f, 0.000000f, 1.000000f);
-        // (3310.400000f, 0.000000f, 320.0000f,
-        //                         0.000000f, 3325.500000f, 240.0000f,
-        //                         0.000000f, 0.000000f, 1.000000f);
 }
 
 bool loadImagesAndDetectFeatures() {
@@ -176,7 +142,7 @@ bool loadImagesAndDetectFeatures() {
     for (vector<filesystem::path>::const_iterator itr = imagePaths.begin(); itr != imagePaths.end(); ++itr) {
         cv::String filePath = cv::String(filesystem::canonical(*itr).string()); //Get full file path, not relative.
 
-        cv::Mat image = cv::imread(filePath, cv::IMREAD_ANYCOLOR);
+        cv::Mat image = cv::imread(filePath, cv::COLOR_BGR2GRAY);
         cv::resize(image, image, image.size()/IMAGE_DOWNSCALE_FACTOR);
 
         if (images.size() == 0) {
@@ -184,6 +150,12 @@ bool loadImagesAndDetectFeatures() {
         }
 
         ImageData *currentImage = new ImageData(image, cameraIntrinsic,  cv::Mat::eye(3, 4, CV_64F));
+
+        if (images.size() == 0) {
+            currentImage->projectionMatrix = currentImage->cameraIntrinsic  * currentImage->projectionMatrix;
+        }
+
+
         images.push_back(currentImage);
     }
     return 1;
@@ -210,7 +182,8 @@ cv::Mat estimateRelativeTransform(ImageData* image1, ImageData* image2, vector<c
     return localTransform;
 }
 
-void estimateWorldTransform(cv::Mat relativeTransform, int image1Index, int image2Index, vector<cv::Point2f> image1Points, vector<cv::Point2f> image2Points) {
+void estimateWorldTransform(cv::Mat relativeTransform, int image1Index, int image2Index, 
+                                vector<cv::Point2f> image1Points, vector<cv::Point2f> image2Points) {
     images[image2Index]->worldTransform = images[image1Index]->worldTransform * relativeTransform;
 
     cv::Mat rotationMatrix = images[image2Index]->worldTransform(cv::Range(0, 3), cv::Range(0, 3));
@@ -220,8 +193,7 @@ void estimateWorldTransform(cv::Mat relativeTransform, int image1Index, int imag
     cv::Mat invertedRotation = rotationMatrix.t();   //The rotation of B with respect to A, rahter than A with respect to B.
     projectionMatrix(cv::Range(0, 3), cv::Range(0, 3)) = invertedRotation;
     projectionMatrix(cv::Range(0, 3), cv::Range(3, 4)) = -invertedRotation * translationMatrix;
-
-    images[image2Index]->projectionMatrix = projectionMatrix;
+    images[image2Index]->projectionMatrix = images[image2Index]->cameraIntrinsic  * projectionMatrix;
 }
 
 vector<cv::Point3f> triangulatePoints(ImageData* image1, ImageData* image2, vector<cv::Point2f> image1Points, vector<cv::Point2f> image2Points) {
@@ -229,7 +201,7 @@ vector<cv::Point3f> triangulatePoints(ImageData* image1, ImageData* image2, vect
     cout << "Camera Intrinsic:\n" << image1->cameraIntrinsic << "\n\nimage1 Projection Matrix:\n" 
         << image1->projectionMatrix << "\n\nimage2 Projection Matrix:\n" << image2->projectionMatrix << endl;
     cv::Mat points;
-    cv::triangulatePoints(image1->cameraIntrinsic * image1->projectionMatrix, image2->cameraIntrinsic * image2->projectionMatrix, image1Points, image2Points, points);
+    cv::triangulatePoints(image1->projectionMatrix, image2->projectionMatrix, image1Points, image2Points, points);
 
     vector<cv::Point3f> points3D;
     for (int i = 0; i < points.cols; i++) {
@@ -291,7 +263,9 @@ void matchFeatures(int image1Index, int image2Index) {
             filteredMatches, img_matches, cv::Scalar::all(-1), cv::Scalar::all(-1),
             vector<char>(), cv::DrawMatchesFlags::NOT_DRAW_SINGLE_POINTS );
 
+
         //Show detected matches in an image viewer for debug purposes. 
+        resize(img_matches, img_matches, img_matches.size()/2);
         cv::imshow("Good Matches", img_matches);
         cv::waitKey(0); //Wait for a key to be hit to exit viewer.
 
@@ -341,9 +315,11 @@ void matchFeatures(int image1Index, int image2Index) {
             scaleFactor /= count;
 
             cout << "previous Scale: " << previousPairScale << ", current Scale: " << currentPairScale << "\nScaleFactor: " << scaleFactor << endl;
-
-            //Adjust estimate for World Position of Image2
-            // localTransform *= scaleFactor;
+            
+            cv::Mat localTranslation = localTransform(cv::Range(0, 3), cv::Range(3, 4));
+            localTranslation *= scaleFactor;
+            localTranslation.copyTo(localTransform(cv::Range(0, 3), cv::Range(3, 4)));
+            
             cout << "Pre Scale: " << images[image2Index]->worldTransform << endl;
             estimateWorldTransform(localTransform, image1Index, image2Index, filteredMatchesP1, filteredMatchesP2);
 
@@ -363,10 +339,9 @@ void matchFeatures(int image1Index, int image2Index) {
         auto corresponding3DPoint = previousPairImage2FeaturesToPoints3D.find(filteredMatchesP1[i]);
 
         cv::Point3f mixedColour;
-        //average colour
+        //Average colour
         cv::Vec3b col1 = image1->image.at<cv::Vec3b>(filteredMatchesP1[i].y, filteredMatchesP1[i].x),
                     col2 = image2->image.at<cv::Vec3b>(filteredMatchesP2[i].y, filteredMatchesP2[i].x);
-        
         
         mixedColour += cv::Point3f(col1.val[0], col1.val[1], col1.val[2]);
         mixedColour += cv::Point3f(col2.val[0], col2.val[1], col2.val[2]);
@@ -421,7 +396,7 @@ int main(int argc, const char* argv[]) {
                 averagedColour += currentPointColours[j];
             }
             averagedPoint /= ((float) currentPointGuesses.size());
-            averagedPoint *= SCALE_FACTOR; //Scale up
+            // averagedPoint *= SCALE_FACTOR; //Scale up
             averagedColour /= ((float) currentPointColours.size());
             points3D.push_back(glm::vec3(averagedPoint.x, averagedPoint.y, averagedPoint.z));
             pointColours.push_back(glm::vec3(averagedColour.x/255.0f, averagedColour.y/255.0f, averagedColour.z/255.0f));
