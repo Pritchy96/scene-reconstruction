@@ -22,14 +22,14 @@ using namespace boost;
 
 vector<string> acceptedExtensions = {".png", ".jpg", ".PNG", ".JPG"};
 
-const string imageDir = "./bin/data/desk/";
-const int IMAGE_DOWNSCALE_FACTOR = 4, MIN_GUESSES_COUNT = 3, IMAGES_TO_PROCESS = 99;
-const double FOCAL_LENGTH = 4308 / IMAGE_DOWNSCALE_FACTOR;
-const float SCALE_FACTOR = 10.0f;
+const string imageDir = "./bin/data/synthetic1_images/";
+const int IMAGE_DOWNSCALE_FACTOR = 1, MIN_GUESSES_COUNT = 2, IMAGES_TO_PROCESS = 5;
+const double FOCAL_LENGTH = 851.01 / IMAGE_DOWNSCALE_FACTOR;
+const float SCALE_FACTOR = 1.0f;
 //4308 Desk
 //9318.70967742 Doll
 //3310.4 Dino
-//851.01 Synthetic
+//851.01 synthetic1_images
 
 cv::Mat cameraIntrinsic;    //Assume all camera intrinsics are equal for now.
 cv::Mat initialPose = cv::Mat::eye(3, 4, CV_64F);
@@ -207,7 +207,6 @@ vector<cv::Point3f> triangulatePoints(ImageData* image1, ImageData* image2, vect
     for (int i = 0; i < points.cols; i++) {
         vector<cv::Point3f> p3d;
         convertPointsFromHomogeneous(points.col(i).t(), p3d);
-        // cout << "x: " << p3d[0].x << ", y: " << p3d[0].y<< ", z: " << p3d[0].z << endl;
         points3D.insert(points3D.end(), p3d.begin(), p3d.end());
     }
     return points3D;
@@ -257,17 +256,16 @@ void matchFeatures(int image1Index, int image2Index) {
             }
         }
 
-
         cv::Mat img_matches;
         cv::drawMatches(image1->image, image1->image_keypoints, image2->image, image2->image_keypoints,
             filteredMatches, img_matches, cv::Scalar::all(-1), cv::Scalar::all(-1),
             vector<char>(), cv::DrawMatchesFlags::NOT_DRAW_SINGLE_POINTS );
 
 
-        //Show detected matches in an image viewer for debug purposes. 
+    //Show detected matches in an image viewer for debug purposes. 
         resize(img_matches, img_matches, img_matches.size()/2);
         cv::imshow("Good Matches", img_matches);
-        cv::waitKey(0); //Wait for a key to be hit to exit viewer.
+        cv::waitKey(4); //Wait for a key to be hit to exit viewer.
 
 
     //Initial estimate for World Position of Image2
@@ -292,15 +290,15 @@ void matchFeatures(int image1Index, int image2Index) {
                 if(firstPair) {
                     //The first time we've found a set of three matched points, set them to guess 1 rather than 2.
                     previousPairGuess1 = points3DGuesses[corresponding3DPoint->second].back();
-                    currentPairGuess1 = currentPair3DGuesses[i];
                     firstPair = false;
+                    currentPairGuess1 = currentPair3DGuesses[i];
                 } else {
                     //We have two points matched across each pair, we can do scaling.
                     previousPairGuess2 = points3DGuesses[corresponding3DPoint->second].back();
                     currentPairGuess2 = currentPair3DGuesses[i];
 
-                    previousPairScale = cv::norm(cv::Mat(previousPairGuess1) - cv::Mat(previousPairGuess2));
-                    currentPairScale = cv::norm(cv::Mat(currentPairGuess1) - cv::Mat(currentPairGuess2));
+                    currentPairScale = cv::norm(cv::Mat(currentPairGuess1), cv::Mat(currentPairGuess2));
+                    previousPairScale = cv::norm(cv::Mat(previousPairGuess1), cv::Mat(previousPairGuess2));
                     scaleFactor += previousPairScale / currentPairScale;
                     count++;
 
@@ -395,7 +393,7 @@ int main(int argc, const char* argv[]) {
                 averagedColour += currentPointColours[j];
             }
             averagedPoint /= ((float) currentPointGuesses.size());
-            // averagedPoint *= SCALE_FACTOR; //Scale up
+            averagedPoint *= SCALE_FACTOR; //Scale up
             averagedColour /= ((float) currentPointColours.size());
             points3D.push_back(glm::vec3(averagedPoint.x, averagedPoint.y, averagedPoint.z));
             pointColours.push_back(glm::vec3(averagedColour.x/255.0f, averagedColour.y/255.0f, averagedColour.z/255.0f));

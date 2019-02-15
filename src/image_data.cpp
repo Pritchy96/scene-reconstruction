@@ -32,13 +32,13 @@ void ImageData::SetupAndDetectKeyPoints() {
 
     //Detect features in the image.
     // cv::Ptr<cv::Feature2D> orb = cv::ORB::create(5000);
-    cv::Ptr<cv::AKAZE> orb = cv::AKAZE::create();
+    cv::Ptr<cv::ORB> orb = cv::ORB::create(100000000);
     orb->detectAndCompute(image, cv::Mat(), image_keypoints, image_descriptors);
 
     if (DEBUG_LOG) {
         cv::Mat output_image_keypoints;
         drawKeypoints( image, image_keypoints, output_image_keypoints, cv::Scalar::all(-1), cv::DrawMatchesFlags::DEFAULT );
         imshow("Detected Keypoints", output_image_keypoints );
-        cv::waitKey(0);
+        cv::waitKey(4);
     }
 }
