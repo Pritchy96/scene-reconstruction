@@ -11,7 +11,7 @@ uniform mat4 scale;
 
 void main() {
 	gl_Position = MVP * scale * vec4(vertexPosition_modelspace,1);
-	gl_PointSize = 4.0f;  
+	gl_PointSize = 7.0f;  
 
 	fragment_colour = vec4(vertex_colour, 1.0f);
 }

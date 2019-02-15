@@ -13,7 +13,6 @@
 
 #include "../include/point2fCompare.hpp"
 #include "../include/image_data.hpp"
-#include "../include/image_data_set.hpp"
 #include "../include/render_environment.hpp"
 #include "../include/shader.hpp"    
 
@@ -73,29 +72,14 @@ void fromCV2GLM(const cv::Mat& cvmat, glm::mat4* glmmat) {
 void runSBA() {
         // if (imageSets.size() > 1) { //Only run if images > 2
         //     // run sba optimization
-        //     cout << "visibility " << endl;
-        //     for (vector<vector<int>>::const_iterator i = visibility.begin(); i != visibility.end(); ++i) {
-        //         for (vector<int>::const_iterator j = (*i).begin(); j != (*i).end(); ++j) {
-        //             cout << *j << ", ";
-        //         }
-        //     cout << endl;
-        //     }
-            
-        //     cout << "points3D " << endl;
-        //     for (vector<cv::Point3f>::const_iterator itr = points3D.begin(); itr != points3D.end(); ++itr) {
-        //         cout << *itr << endl;
-        //     }
-
         //     try {
         //         sba.run( points3D, imagePoints, visibility, cameraMatrix, cameraRotations, cameraTranslations, distortionCoeffs);
         //     } catch (cv::Exception) {
-
         //     }
 
         //         cout << "relative translation after BA: " << imagePair->relativeTranslation << endl;
         //         cout << "image1->worldTranslation after BA" << imagePair->image1->worldTranslation << endl;
         //         cout << "image2->worldTranslation after BA" << imagePair->image2->worldTranslation << endl;
-
         // }
 }
 
