@@ -1,5 +1,5 @@
 CC := g++
-CXXFLAGS := -Wall -std=c++11 -MMD -MP
+CXXFLAGS := -Wall -std=c++11 -g
 
 SRC_DIR := ./src
 TEST_DIR := ./test
@@ -17,7 +17,7 @@ LIBS := -lGL -lGLU -lglfw -lX11 -lXxf86vm -lXrandr -lpthread -lXi -lGLEW -lopenc
 	   -lopencv_xfeatures2d -lopencv_shape -lopencv_video -lopencv_ml -lopencv_ximgproc -lopencv_calib3d\
 	    -lopencv_features2d -lopencv_highgui -lopencv_videoio -lopencv_flann -lopencv_xobjdetect\
 		 -lopencv_imgcodecs -lopencv_objdetect -lopencv_xphoto -lopencv_imgproc -lopencv_core -lhdf5\
-		  -lboost_system -lboost_filesystem -lgl_framework
+		  -lboost_system -lboost_filesystem -lgl_framework -lcvsba
 
 
 MAINS := $(BUILD_DIR)/main.o $(TEST_DIR)/gl_framework_test.o

@@ -16,10 +16,9 @@
     class Renderable {
         public:
             Renderable();
-            Renderable(GLuint Shader);
-            Renderable(GLuint Shader, vector<glm::vec3> vert_data);
-            Renderable(GLuint Shader, vector<glm::vec3> vert_data, vector<glm::vec3> colour_data);
-            Renderable(GLuint Shader, vector<glm::vec3> vert_data, vector<glm::vec3> colour_data, GLenum RenderType);
+            Renderable(GLuint Shader, GLuint renderPrimative = GL_POINTS);
+            Renderable(GLuint Shader, vector<glm::vec3> vert_data, GLuint renderPrimative = GL_POINTS);
+            Renderable(GLuint Shader, vector<glm::vec3> vert_data, vector<glm::vec3> colour_data, GLuint renderPrimative = GL_POINTS);
 
             virtual ~Renderable() {}
 
@@ -28,8 +27,7 @@
             virtual void Draw(float deltaT, glm::mat4 projectionMatrix, glm::mat4 viewMatrix);
 
             vector<vec3> vertexes, colours;
-	        GLuint pos_vbo, col_vbo, vao, shader;
-            GLenum renderType = GL_POINTS;
+	        GLuint pos_vbo, col_vbo, vao, shader, renderType;
             glm::mat4 modelMatrix = glm::mat4(1.0f);
             glm::mat4 scaleMatrix = glm::scale(glm::vec3(10.0, 10.0, 10.0));
             

@@ -1,11 +1,8 @@
-#include <iostream>
+
 #include <vector>
 #include <stdlib.h>
+#include <iostream>
 #include <time.h>
-
-#include <opencv2/core/core.hpp>
-#include <opencv2/highgui/highgui.hpp>
-#include <opencv2/xfeatures2d.hpp>
 
 #include <glm/glm.hpp>
 #define GLM_ENABLE_EXPERIMENTAL
@@ -14,14 +11,34 @@
 
 using namespace std;
 
-ImageData::ImageData(cv::String imagePath, cv::Mat intrinsicMat, glm::vec3 lineCol, glm::mat4 transform) {
-    image = cv::imread(imagePath, cv::IMREAD_COLOR);
-    cameraIntrinsic = intrinsicMat;
+// ImageData::ImageData(cv::String imagePath, cv::Matx33d intrinsicMat, cv::InputArray translation, cv::InputArray rotation) {
+//     worldTranslation = translation.getMat();
+//     worldRotation = rotation.getMat();
+
+//     SetupAndDetectKeyPoints(imagePath, intrinsicMat);
+// }
+
+ImageData::ImageData(cv::Mat _image, cv::Mat _cameraIntrinsic, cv::Mat _worldTransform) {
+    image = _image;
+
+    CV_Assert(_worldTransform.type() == CV_64F);
+    worldTransform = _worldTransform;
+    cameraIntrinsic = _cameraIntrinsic;
+
+    SetupAndDetectKeyPoints();
+}
+
+void ImageData::SetupAndDetectKeyPoints() {
 
     //Detect features in the image.
-    cv::Ptr<cv::xfeatures2d::SiftFeatureDetector> detector = cv::xfeatures2d::SiftFeatureDetector::create();
-    detector->detectAndCompute(image, cv::Mat(), image_keypoints, image_descriptors); 
+    // cv::Ptr<cv::Feature2D> orb = cv::ORB::create(5000);
+    cv::Ptr<cv::ORB> orb = cv::ORB::create(100000000);
+    orb->detectAndCompute(image, cv::Mat(), image_keypoints, image_descriptors);
 
-    worldTransformation = transform;
-    lineColour = lineCol;
+    if (DEBUG_LOG) {
+        cv::Mat output_image_keypoints;
+        drawKeypoints( image, image_keypoints, output_image_keypoints, cv::Scalar::all(-1), cv::DrawMatchesFlags::DEFAULT );
+        imshow("Detected Keypoints", output_image_keypoints );
+        cv::waitKey(4);
+    }
 }
