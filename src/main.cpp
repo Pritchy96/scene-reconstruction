@@ -14,6 +14,7 @@
 #include "../include/point2fCompare.hpp"
 #include "../include/image_data.hpp"
 #include "../include/render_environment.hpp"
+#include "../include/render_environment.hpp"
 #include "../include/shader.hpp"    
 
 using namespace std;
@@ -46,6 +47,7 @@ vector<vector<cv::Point2f>> imagePoints;
 vector<vector<int>> visibility;  //for each image, is each 3D point represented by a 2D image feature. 1 if yes, 0 if not.
 vector<cv::Mat> cameraMatrix;  //The intrinsic matrix for each camera.
 vector<cv::Mat> cameraTransforms;
+glm::vec3 pointAverage; //  //Center the reconstruction in the scene using this.
 
 
 void fromCV2GLM(const cv::Mat& cvmat, glm::mat3* glmmat) {
@@ -262,7 +264,6 @@ void matchFeatures(int image1Index, int image2Index) {
         int good_matches = cv::sum(mask)[0];
         assert(good_matches >= 10);
 
-
     //Calculate scale factor based on previous points
         cv::Point3f previousPairGuess1, previousPairGuess2, currentPairGuess1, currentPairGuess2; 
         bool firstPair = true;
@@ -368,6 +369,7 @@ int main(int argc, const char* argv[]) {
         matchFeatures(i, i+1);
     }
 
+
     for (int i = 0; i < points3DGuesses.size(); i++) {
         vector<cv::Point3f> currentPointGuesses = points3DGuesses[i], currentPointColours = points3DColours[i];
         cv::Point3f averagedPoint, averagedColour;
@@ -379,14 +381,20 @@ int main(int argc, const char* argv[]) {
             averagedPoint /= ((float) currentPointGuesses.size());
             averagedPoint *= SCALE_FACTOR; //Scale up
             averagedColour /= ((float) currentPointColours.size());
-            points3D.push_back(glm::vec3(averagedPoint.x, averagedPoint.y, averagedPoint.z));
-            pointColours.push_back(glm::vec3(averagedColour.x/255.0f, averagedColour.y/255.0f, averagedColour.z/255.0f));
+            glm::vec3 point = glm::vec3(averagedPoint.x, averagedPoint.y, averagedPoint.z);
+            points3D.push_back(point);
+            pointAverage += point;
+            pointColours.push_back(glm::vec3(averagedColour.z/255.0f, averagedColour.y/255.0f, averagedColour.x/255.0f));
         }
-
-
     }
 
-    renderEnvironment *renderer = new renderEnvironment();
+    //Center 3d point cloud in scene
+    pointAverage /= points3D.size();
+    for (int i = 0; i < points3D.size(); i++) {
+        points3D[i] -= pointAverage;
+    }
+
+    renderEnvironment *renderer = new renderEnvironment(0.4f, 0.2f, 0.2f, 0.0f, 0.0f, 0.0f);
 
     cout << "Initialised renderer" << endl;
         	

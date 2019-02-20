@@ -6,3 +6,5 @@ main.code-workspace
 .vscode/launch.json
 .vscode/settings.json
 include/GLFW
+docs/log.txt
+test/gl_framework_test.o

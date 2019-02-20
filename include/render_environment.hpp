@@ -15,12 +15,10 @@
 
     class renderEnvironment {
         public:
-            renderEnvironment();
+            renderEnvironment(float backgroundColour_r, float backgroundColour_g, float backgroundColour_b, float cameraLookAt_x, float cameraLookAt_y, float cameraLookAt_z);
             ~renderEnvironment();
 
             void addRenderable(Renderable* renderable);
-            void addAxisLines();
-            void removeAxisLines();
             void update(float deltaT);
             void setupTransformShader(GLuint transformShader);   
             
