@@ -296,23 +296,32 @@ void matchFeatures(int image1Index, int image2Index) {
         if (previousPairScale != 0 && currentPairScale != 0) {
             scaleFactor /= count;
 
-            cout << "previous Scale: " << previousPairScale << ", current Scale: " << currentPairScale << "\nScaleFactor: " << scaleFactor << endl;
+            // cout << "previous Scale: " << previousPairScale << ", current Scale: " << currentPairScale << "\nScaleFactor: " << scaleFactor << endl;
             
             cv::Mat localTranslation = localTransform(cv::Range(0, 3), cv::Range(3, 4));
             localTranslation *= scaleFactor;
-            localTranslation.copyTo(localTransform(cv::Range(0, 3), cv::Range(3, 4)));
+            // localTranslation.copyTo(localTransform(cv::Range(0, 3), cv::Range(3, 4)));
             
             cout << "Pre Scale: " << images[image2Index]->worldTransform << endl;
             estimateWorldTransform(localTransform, image1Index, image2Index, filteredMatchesP1, filteredMatchesP2);
 
             cameraTransforms.push_back(images[image2Index]->worldTransform);
-            cout << "Post Scale: " << cameraTransforms[cameraTransforms.size()-1] << endl;
+            // cout << "Post Scale: " << cameraTransforms[cameraTransforms.size()-1] << endl;
             
             //Retriangulate Points
                 currentPair3DGuesses = triangulatePoints(image1, image2, filteredMatchesP1, filteredMatchesP2);
                 int good_matches = cv::sum(mask)[0];
                 assert(good_matches >= 10);
         }
+
+        //Push back camera position.
+        glm::mat4 i2WorldTransform;
+        fromCV2GLM(images[image2Index]->worldTransform, &i2WorldTransform);
+        cout << images[image2Index]->worldTransform << endl;
+        cout << glm::to_string(i2WorldTransform) << endl;
+        glm::vec4 cameraPos = glm::vec4(1.0f);
+        cameras3D.push_back(cameraPos * i2WorldTransform);
+        cameraColours.push_back(glm::vec3(1.0f, 1.0f, 1.0f));
 
 
     // Put points into final structure.
@@ -364,6 +373,10 @@ int main(int argc, const char* argv[]) {
 
     if (!loadImagesAndDetectFeatures()) return -1;
 
+    //push back initial camera position.
+        cameras3D.push_back(glm::vec3(0.0f));
+        cameraColours.push_back(glm::vec3(1.0f, 1.0f, 1.0f));
+
     // Match features between all images
     for (int i = 0; i < std::min((int) images.size(), IMAGES_TO_PROCESS) - 1; i++) {
         matchFeatures(i, i+1);
@@ -399,8 +412,8 @@ int main(int argc, const char* argv[]) {
     cout << "Initialised renderer" << endl;
         	
     GLuint basicShader = Shader::LoadShaders("./bin/shaders/basic.vertshader", "./bin/shaders/basic.fragshader");
-	// renderer->addRenderable(new Renderable(basicShader, cameras3D, cameras3D, GL_POINTS));
-	renderer->addRenderable(new Renderable(basicShader, points3D, pointColours, GL_POINTS));
+	renderer->addRenderable(new Renderable(basicShader, cameras3D, cameraColours, GL_POINTS));
+	// renderer->addRenderable(new Renderable(basicShader, points3D, pointColours, GL_POINTS));
 
     while (true) {  //TODO: Write proper update & exit logic.
 		oldTime = newTime;
