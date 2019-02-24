@@ -41,7 +41,7 @@ vector<ImageData*> images;
 map<cv::Point2f, int> previousPairImage2FeaturesToPoints3D; 
 //A list of a list of guesses for each 3d Point. Each list gets averaged out to a single 3D point in points3D.
 vector<vector<cv::Point3f>> points3DGuesses, points3DColours;
-vector<glm::vec3> points3D, pointColours, cameras3D;
+vector<glm::vec3> points3D, pointColours, cameras3D, cameraColours;
 //List of a list of each images' detected features. This is not sparse; imagePoints[0][1] does not have to be equal to imagePoints[1][1] even if they do have a match!
 vector<vector<cv::Point2f>> imagePoints;    
 vector<vector<int>> visibility;  //for each image, is each 3D point represented by a 2D image feature. 1 if yes, 0 if not.
