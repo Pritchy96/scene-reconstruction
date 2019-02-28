@@ -36,8 +36,8 @@ void ImageData::SetupAndDetectKeyPoints() {
 
     if (DEBUG_LOG) {
         cv::Mat output_image_keypoints;
-        drawKeypoints( image, image_keypoints, output_image_keypoints, cv::Scalar::all(-1), cv::DrawMatchesFlags::DEFAULT );
+        drawKeypoints( image, image_keypoints, output_image_keypoints, cv::Scalar::all(-1), cv::DrawMatchesFlags::DRAW_RICH_KEYPOINTS );
         imshow("Detected Keypoints", output_image_keypoints );
-        cv::waitKey(4);
+        cv::waitKey(0);
     }
 }

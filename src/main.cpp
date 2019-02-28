@@ -1,5 +1,6 @@
 #include <iostream>
 #include <numeric>
+#include <ctime>
 #include <chrono>
 #include <unordered_map>
 #include <boost/filesystem.hpp>
@@ -10,26 +11,31 @@
 #include <glm/glm.hpp>
 #include <glm/gtc/type_ptr.hpp>
 #include <glm/gtx/string_cast.hpp>
+#include <nlohmann/json.hpp>
 
 #include "../include/point2fCompare.hpp"
 #include "../include/image_data.hpp"
 #include "../include/render_environment.hpp"
 #include "../include/render_environment.hpp"
-#include "../include/shader.hpp"    
+#include "../include/shader.hpp"   
 
 using namespace std;
 using namespace boost;
+using json = nlohmann::json;
 
 vector<string> acceptedExtensions = {".png", ".jpg", ".PNG", ".JPG"};
 
-const string imageDir = "./bin/data/synthetic1_images/";
-const int IMAGE_DOWNSCALE_FACTOR = 1, MIN_GUESSES_COUNT = 2, IMAGES_TO_PROCESS = 5;
-const double FOCAL_LENGTH = 851.01 / IMAGE_DOWNSCALE_FACTOR;
-const float SCALE_FACTOR = 1.0f;
+int IMAGE_DOWNSCALE_FACTOR = -1, MIN_GUESSES_COUNT = -1, IMAGES_TO_PROCESS = -1;
+double FOCAL_LENGTH = -1;
+float OPENGL_SCALE_FACTOR = -1.0f;
+bool SHOW_MATCHES = false;
+string DATASET_DIR = "";
+//focal_pixel = (focal_mm / sensor_width_mm) * image_width_in_pixels
 //4308 Desk
 //9318.70967742 Doll
 //3310.4 Dino
 //851.01 synthetic1_images
+//907.32 Flowerpot
 
 cv::Mat cameraIntrinsic;    //Assume all camera intrinsics are equal for now.
 cv::Mat initialPose = cv::Mat::eye(3, 4, CV_64F);
@@ -86,36 +92,50 @@ void runSBA() {
 }
 
 void setupSBA() {
-    cvsba::Sba sba;
-    cv::TermCriteria criteria(CV_TERMCRIT_ITER + CV_TERMCRIT_EPS, 150, 1e-10);
-    cvsba::Sba::Params params;
-    params.iterations = 150;
-    params.type = cvsba::Sba::MOTIONSTRUCTURE;
-    params.minError = 1e-10;
-    params.fixedIntrinsics = 5;
-    params.fixedDistortion = 5;
-    params.verbose = false;
-    sba.setParams(params);
+    // cvsba::Sba sba;
+    // cv::TermCriteria criteria(CV_TERMCRIT_ITER + CV_TERMCRIT_EPS, 150, 1e-10);
+    // cvsba::Sba::Params params;
+    // params.iterations = 150;
+    // params.type = cvsba::Sba::MOTIONSTRUCTURE;
+    // params.minError = 1e-10;
+    // params.fixedIntrinsics = 5;
+    // params.fixedDistortion = 5;
+    // params.verbose = false;
+    // sba.setParams(params);
+}
+
+void LoadSettings() {
+    stringstream settingsPath;
+    settingsPath << DATASET_DIR << "/settings.json";
+
+    std::ifstream in(settingsPath.str());
+    json settings;
+    in >> settings;
+
+    IMAGE_DOWNSCALE_FACTOR = settings["IMAGE_DOWNSCALE_FACTOR"];
+    MIN_GUESSES_COUNT = settings["MIN_GUESSES_COUNT"];
+    IMAGES_TO_PROCESS = settings["IMAGES_TO_PROCESS"];
+    FOCAL_LENGTH = settings["FOCAL_LENGTH"];
+    FOCAL_LENGTH /= IMAGE_DOWNSCALE_FACTOR;
+    OPENGL_SCALE_FACTOR = settings["OPENGL_SCALE_FACTOR"];
+    SHOW_MATCHES = settings["SHOW_MATCHES"];
 }
 
 void setupIntrinsicMatrix(int imageWidth, int imageHeight) {
-        double cx = imageWidth/2;
-        double cy = imageHeight/2;
+    double cx = imageWidth/2;
+    double cy = imageHeight/2;
 
-        cv::Point2d pp(cx, cy);
-
-        cameraIntrinsic = cv::Mat::eye(3, 3, CV_64F);
-
-        cameraIntrinsic.at<double>(0,0) = FOCAL_LENGTH;
-        cameraIntrinsic.at<double>(1,1) = FOCAL_LENGTH;
-        cameraIntrinsic.at<double>(0,2) = cx;
-        cameraIntrinsic.at<double>(1,2) = cy;
+    cameraIntrinsic = cv::Mat::eye(3, 3, CV_64F);
+    cameraIntrinsic.at<double>(0,0) = FOCAL_LENGTH;
+    cameraIntrinsic.at<double>(1,1) = FOCAL_LENGTH;
+    cameraIntrinsic.at<double>(0,2) = cx;
+    cameraIntrinsic.at<double>(1,2) = cy;
 }
 
 bool loadImagesAndDetectFeatures() {
     vector<filesystem::path> imagePaths;
 
-    copy_if(filesystem::directory_iterator(imageDir), filesystem::directory_iterator(), back_inserter(imagePaths), [&](filesystem::path path){
+    copy_if(filesystem::directory_iterator(DATASET_DIR), filesystem::directory_iterator(), back_inserter(imagePaths), [&](filesystem::path path){
         return find(acceptedExtensions.begin(), acceptedExtensions.end(), path.extension()) != acceptedExtensions.end();
     });
     sort(imagePaths.begin(), imagePaths.end());   //Sort, since directory iteration is not ordered on some file systems
@@ -123,15 +143,13 @@ bool loadImagesAndDetectFeatures() {
     if (imagePaths.size() == 0) {
         cout << "No Images found at path!" << endl;
         return -1;
-    } 
+    }
 
     for (vector<filesystem::path>::const_iterator itr = imagePaths.begin(); itr != imagePaths.end(); ++itr) {
         cv::String filePath = cv::String(filesystem::canonical(*itr).string()); //Get full file path, not relative.
 
         cv::Mat image = cv::imread(filePath, cv::IMREAD_ANYCOLOR);
         cv::resize(image, image, image.size()/IMAGE_DOWNSCALE_FACTOR);
-        // cvtColor(image, image, cv::COLOR_BGR2GRAY);  //Convert to greyscale for better sampling
-
 
         if (images.size() == 0) {
             setupIntrinsicMatrix(image.size().width, image.size().height);
@@ -183,9 +201,6 @@ void estimateWorldTransform(cv::Mat relativeTransform, int image1Index, int imag
 }
 
 vector<cv::Point3f> triangulatePoints(ImageData* image1, ImageData* image2, vector<cv::Point2f> image1Points, vector<cv::Point2f> image2Points) {
-
-    cout << "Camera Intrinsic:\n" << image1->cameraIntrinsic << "\n\nimage1 Projection Matrix:\n" 
-        << image1->projectionMatrix << "\n\nimage2 Projection Matrix:\n" << image2->projectionMatrix << endl;
     cv::Mat points;
     cv::triangulatePoints(image1->projectionMatrix, image2->projectionMatrix, image1Points, image2Points, points);
 
@@ -203,8 +218,8 @@ void matchFeatures(int image1Index, int image2Index) {
     ImageData* image2 = images[image2Index];
 
     //Feature Match 
-        // cv::FlannBasedMatcher matcher = cv::FlannBasedMatcher(cv::makePtr<cv::flann::LshIndexParams>(12, 20, 2));
         cv::Ptr<cv::DescriptorMatcher> matcher = cv::DescriptorMatcher::create("BruteForce-Hamming");        
+        // cv::FlannBasedMatcher matcher = cv::FlannBasedMatcher(cv::makePtr<cv::flann::LshIndexParams>(12, 20, 2));
         // Match features between all images
         vector<cv::Point2f> initialMatchesP1, initialMatchesP2,  filteredMatchesP1, filteredMatchesP2;;
         vector<int> intialIndexesP1, intialIndexesP2, filteredIndexesP1, filteredIndexesP2;
@@ -245,19 +260,23 @@ void matchFeatures(int image1Index, int image2Index) {
         cv::Mat img_matches;
         cv::drawMatches(image1->image, image1->image_keypoints, image2->image, image2->image_keypoints,
             filteredMatches, img_matches, cv::Scalar::all(-1), cv::Scalar::all(-1),
-            vector<char>(), cv::DrawMatchesFlags::NOT_DRAW_SINGLE_POINTS );
+            vector<char>(), cv::DrawMatchesFlags::DEFAULT );
 
-
+    // resize(img_matches, img_matches, img_matches.size()/2);
     //Show detected matches in an image viewer for debug purposes. 
-        resize(img_matches, img_matches, img_matches.size()/2);
-        cv::imshow("Good Matches", img_matches);
-        cv::waitKey(4); //Wait for a key to be hit to exit viewer.
+        if (SHOW_MATCHES) {
+            cv::imshow("Good Matches", img_matches);
+            cv::waitKey(0); //Wait for a key to be hit to exit viewer.
+        }
 
+        std::time_t result = std::time(nullptr);
+        stringstream concat;
+        concat << DATASET_DIR << "/results/" << image1Index << ":" << image2Index << ".jpg";
+        cv::imwrite(concat.str(), img_matches);
 
     //Initial estimate for World Position of Image2
         cv::Mat localTransform = estimateRelativeTransform(images[image1Index], images[image2Index], filteredMatchesP1, filteredMatchesP2);
         estimateWorldTransform(localTransform, image1Index, image2Index, filteredMatchesP1, filteredMatchesP2);
-        
 
     //Triangulate initial guesses for Image2
         vector<cv::Point3f> currentPair3DGuesses = triangulatePoints(image1, image2, filteredMatchesP1, filteredMatchesP2);
@@ -296,17 +315,13 @@ void matchFeatures(int image1Index, int image2Index) {
         if (previousPairScale != 0 && currentPairScale != 0) {
             scaleFactor /= count;
 
-            // cout << "previous Scale: " << previousPairScale << ", current Scale: " << currentPairScale << "\nScaleFactor: " << scaleFactor << endl;
-            
             cv::Mat localTranslation = localTransform(cv::Range(0, 3), cv::Range(3, 4));
             localTranslation *= scaleFactor;
             // localTranslation.copyTo(localTransform(cv::Range(0, 3), cv::Range(3, 4)));
             
-            cout << "Pre Scale: " << images[image2Index]->worldTransform << endl;
             estimateWorldTransform(localTransform, image1Index, image2Index, filteredMatchesP1, filteredMatchesP2);
 
             cameraTransforms.push_back(images[image2Index]->worldTransform);
-            // cout << "Post Scale: " << cameraTransforms[cameraTransforms.size()-1] << endl;
             
             //Retriangulate Points
                 currentPair3DGuesses = triangulatePoints(image1, image2, filteredMatchesP1, filteredMatchesP2);
@@ -317,8 +332,6 @@ void matchFeatures(int image1Index, int image2Index) {
         //Push back camera position.
         glm::mat4 i2WorldTransform;
         fromCV2GLM(images[image2Index]->worldTransform, &i2WorldTransform);
-        cout << images[image2Index]->worldTransform << endl;
-        cout << glm::to_string(i2WorldTransform) << endl;
         glm::vec4 cameraPos = glm::vec4(1.0f);
         cameras3D.push_back(cameraPos * i2WorldTransform);
         cameraColours.push_back(glm::vec3(1.0f, 1.0f, 1.0f));
@@ -368,16 +381,19 @@ void matchFeatures(int image1Index, int image2Index) {
 int main(int argc, const char* argv[]) {
     cout << "Launching Program" << endl;
 
+    DATASET_DIR = filesystem::canonical(argv[1]).string();
 	srand (time(NULL));
+
+    LoadSettings();
     setupSBA();
 
     if (!loadImagesAndDetectFeatures()) return -1;
 
-    //push back initial camera position.
+    //Push back initial camera position.
         cameras3D.push_back(glm::vec3(0.0f));
         cameraColours.push_back(glm::vec3(1.0f, 1.0f, 1.0f));
 
-    // Match features between all images
+    //Match features between all images
     for (int i = 0; i < std::min((int) images.size(), IMAGES_TO_PROCESS) - 1; i++) {
         matchFeatures(i, i+1);
     }
@@ -392,7 +408,7 @@ int main(int argc, const char* argv[]) {
                 averagedColour += currentPointColours[j];
             }
             averagedPoint /= ((float) currentPointGuesses.size());
-            averagedPoint *= SCALE_FACTOR; //Scale up
+            averagedPoint *= OPENGL_SCALE_FACTOR; //Scale up
             averagedColour /= ((float) currentPointColours.size());
             glm::vec3 point = glm::vec3(averagedPoint.x, averagedPoint.y, averagedPoint.z);
             points3D.push_back(point);
@@ -407,13 +423,18 @@ int main(int argc, const char* argv[]) {
         points3D[i] -= pointAverage;
     }
 
+    //Center camera 3d positions in scene
+    for (int i = 0; i < cameras3D.size(); i++) {
+        cameras3D[i] -= pointAverage;
+    }
+
     renderEnvironment *renderer = new renderEnvironment(0.4f, 0.2f, 0.2f, 0.0f, 0.0f, 0.0f);
 
     cout << "Initialised renderer" << endl;
         	
     GLuint basicShader = Shader::LoadShaders("./bin/shaders/basic.vertshader", "./bin/shaders/basic.fragshader");
-	renderer->addRenderable(new Renderable(basicShader, cameras3D, cameraColours, GL_POINTS));
-	// renderer->addRenderable(new Renderable(basicShader, points3D, pointColours, GL_POINTS));
+    // renderer->addRenderable(new Renderable(basicShader, cameras3D, cameraColours, GL_POINTS));
+	renderer->addRenderable(new Renderable(basicShader, points3D, pointColours, GL_POINTS));
 
     while (true) {  //TODO: Write proper update & exit logic.
 		oldTime = newTime;
