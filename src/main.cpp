@@ -29,6 +29,7 @@ int IMAGE_DOWNSCALE_FACTOR = -1, MIN_GUESSES_COUNT = -1, IMAGES_TO_PROCESS = -1;
 double FOCAL_LENGTH = -1;
 float OPENGL_SCALE_FACTOR = -1.0f;
 bool SHOW_MATCHES = false;
+cv::Mat DISTORTION_COEFFS;
 string DATASET_DIR = "";
 //focal_pixel = (focal_mm / sensor_width_mm) * image_width_in_pixels
 //4308 Desk
@@ -119,6 +120,13 @@ void LoadSettings() {
     FOCAL_LENGTH /= IMAGE_DOWNSCALE_FACTOR;
     OPENGL_SCALE_FACTOR = settings["OPENGL_SCALE_FACTOR"];
     SHOW_MATCHES = settings["SHOW_MATCHES"];
+
+    if (settings["DISTORTION_COEFFS"].size() != 0) {
+        vector<double> coeffs = settings["DISTORTION_COEFFS"];
+        DISTORTION_COEFFS = cv::Mat(1, coeffs.size(), CV_64FC1);
+        memcpy(DISTORTION_COEFFS.data, coeffs.data(), coeffs.size()*sizeof(double)); 
+    }
+
 }
 
 void setupIntrinsicMatrix(int imageWidth, int imageHeight) {
@@ -149,13 +157,25 @@ bool loadImagesAndDetectFeatures() {
         cv::String filePath = cv::String(filesystem::canonical(*itr).string()); //Get full file path, not relative.
 
         cv::Mat image = cv::imread(filePath, cv::IMREAD_ANYCOLOR);
+
         cv::resize(image, image, image.size()/IMAGE_DOWNSCALE_FACTOR);
 
         if (images.size() == 0) {
             setupIntrinsicMatrix(image.size().width, image.size().height);
         }
 
-        ImageData *currentImage = new ImageData(image, cameraIntrinsic,  cv::Mat::eye(3, 4, CV_64F));
+        cv::Mat undestortedImage;
+        if (!DISTORTION_COEFFS.empty()) {
+            cv::undistort(image, undestortedImage, cameraIntrinsic, DISTORTION_COEFFS);
+        } else {
+            undestortedImage = image;
+        }
+
+
+        ImageData *currentImage = new ImageData(undestortedImage, cameraIntrinsic,  cv::Mat::eye(3, 4, CV_64F));
+        cv::imshow("Undestorted Image", undestortedImage);
+            cv::waitKey(0); //Wait for a key to be hit to exit viewer.
+
 
         if (images.size() == 0) {   //Setup first image
             currentImage->projectionMatrix = currentImage->cameraIntrinsic  * currentImage->projectionMatrix;
