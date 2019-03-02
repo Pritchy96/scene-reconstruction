@@ -349,6 +349,7 @@ int main(int argc, char* argv[])
         }
 
         //------------------------------ Show image and check for input commands -------------------
+        resize(view, view, view.size()/4);
         imshow("Image View", view);
         char key = (char)waitKey(s.inputCapture.isOpened() ? 50 : s.delay);
 
@@ -379,6 +380,8 @@ int main(int argc, char* argv[])
             if(view.empty())
                 continue;
             remap(view, rview, map1, map2, INTER_LINEAR);
+            resize(rview, rview, rview.size()/4);
+
             imshow("Image View", rview);
             char c = (char)waitKey();
             if( c  == ESC_KEY || c == 'q' || c == 'Q' )

@@ -31,7 +31,7 @@ ImageData::ImageData(cv::Mat _image, cv::Mat _cameraIntrinsic, cv::Mat _worldTra
 void ImageData::SetupAndDetectKeyPoints() {
 
     //Detect features in the image.
-    cv::Ptr<cv::FeatureDetector> detector = cv::ORB::create(100000000);
+    cv::Ptr<cv::FeatureDetector> detector = cv::AKAZE::create();
     detector->detectAndCompute(image, cv::Mat(), image_keypoints, image_descriptors);
 
     if (DEBUG_LOG) {

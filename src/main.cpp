@@ -173,8 +173,8 @@ bool loadImagesAndDetectFeatures() {
 
 
         ImageData *currentImage = new ImageData(undestortedImage, cameraIntrinsic,  cv::Mat::eye(3, 4, CV_64F));
-        cv::imshow("Undestorted Image", undestortedImage);
-            cv::waitKey(0); //Wait for a key to be hit to exit viewer.
+        // cv::imshow("Undestorted Image", undestortedImage);
+        // cv::waitKey(0); //Wait for a key to be hit to exit viewer.
 
 
         if (images.size() == 0) {   //Setup first image
@@ -336,8 +336,7 @@ void matchFeatures(int image1Index, int image2Index) {
             scaleFactor /= count;
 
             cv::Mat localTranslation = localTransform(cv::Range(0, 3), cv::Range(3, 4));
-            localTranslation *= scaleFactor;
-            // localTranslation.copyTo(localTransform(cv::Range(0, 3), cv::Range(3, 4)));
+            localTranslation *= scaleFactor;    //Also applies transform to localTransform.
             
             estimateWorldTransform(localTransform, image1Index, image2Index, filteredMatchesP1, filteredMatchesP2);
 
