@@ -49,7 +49,6 @@ cv::Mat initialPose = cv::Mat::eye(3, 4, CV_64F);
 
 auto oldTime = std::chrono::steady_clock::now(), newTime = std::chrono::steady_clock::now();
 double deltaT;
-
 vector<ImageData*> images;
 map<cv::Point2f, int> previousPairImage2FeaturesToPoints3D; 
 //A list of a list of guesses for each 3d Point. Each list gets averaged out to a single 3D point in points3D.
@@ -423,7 +422,6 @@ int main(int argc, const char* argv[]) {
         matchFeatures(i, i+1);
     }
 
-
     for (int i = 0; i < points3DGuesses.size(); i++) {
         vector<cv::Point3f> currentPointGuesses = points3DGuesses[i], currentPointColours = points3DColours[i];
         cv::Point3f averagedPoint, averagedColour;
@@ -453,20 +451,46 @@ int main(int argc, const char* argv[]) {
         cameras3D[i] -= pointAverage;
     }
 
-    renderEnvironment *renderer = new renderEnvironment(0.4f, 0.2f, 0.2f, 0.0f, 0.0f, 0.0f);
+    // renderEnvironment *renderer = new renderEnvironment(0.4f, 0.2f, 0.2f, 0.0f, 0.0f, 0.0f);
 
-    cout << "Initialised renderer" << endl;
+    // cout << "Initialised renderer" << endl;
         	
-    GLuint basicShader = Shader::LoadShaders("./bin/shaders/basic.vertshader", "./bin/shaders/basic.fragshader");
-    // renderer->addRenderable(new Renderable(basicShader, cameras3D, cameraColours, GL_POINTS));
-	renderer->addRenderable(new Renderable(basicShader, points3D, pointColours, GL_POINTS));
+    // GLuint basicShader = Shader::LoadShaders("./bin/shaders/basic.vertshader", "./bin/shaders/basic.fragshader");
+    // // renderer->addRenderable(new Renderable(basicShader, cameras3D, cameraColours, GL_POINTS));
+	// renderer->addRenderable(new Renderable(basicShader, points3D, pointColours, GL_POINTS));
+    pcl::visualization::PCLVisualizer viewer("Viewer");
+    viewer.setBackgroundColor (200, 200, 200);
+    viewer.initCameraParameters ();
+
+    pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud (new pcl::PointCloud<pcl::PointXYZRGB>);
+	cloud->points.resize (points3D.size());
+
+    for(int i = 0; i < points3D.size(); i++) {
+        pcl::PointXYZRGB &point = cloud->points[i];
+        point.x = points3D[i].x;
+        point.y = points3D[i].y;
+        point.z = points3D[i].z;
+        point.r = pointColours[i].x * 255.0f;
+        point.g = pointColours[i].y * 255.0f;
+        point.b = pointColours[i].z * 255.0f;
+    }
+
+    viewer.addPointCloud(cloud, "Triangulated Point Cloud");
+    viewer.setPointCloudRenderingProperties (pcl::visualization::PCL_VISUALIZER_POINT_SIZE, 3, "Triangulated Point Cloud");
+    viewer.addCoordinateSystem (1.0);
+
+    // viewer.addCoordinateSystem(1.0, cameraMatrix[1], "2nd cam");
+
+    while (!viewer.wasStopped ()) {
+        viewer.spin();
+    }
 
     while (true) {  //TODO: Write proper update & exit logic.
 		oldTime = newTime;
     	newTime = std::chrono::steady_clock::now();
 		deltaT = std::chrono::duration_cast<std::chrono::milliseconds>(newTime - oldTime).count();
 
-        renderer->update(deltaT);
+        // renderer->update(deltaT);
     }
     return 0;
 }

@@ -17,9 +17,10 @@ LIBS := -lGL -lGLU -lglfw -lX11 -lXxf86vm -lXrandr -lpthread -lXi -lGLEW -lopenc
 	   -lopencv_xfeatures2d -lopencv_shape -lopencv_video -lopencv_ml -lopencv_ximgproc -lopencv_calib3d\
 	    -lopencv_features2d -lopencv_highgui -lopencv_videoio -lopencv_flann -lopencv_xobjdetect\
 		 -lopencv_imgcodecs -lopencv_objdetect -lopencv_xphoto -lopencv_imgproc -lopencv_core -lhdf5\
-		  -lboost_system -lboost_filesystem -lgl_framework -lcvsba -lvtkCommonCore -lpcl_kdtree -lpcl_octree -lpcl_search\
+		  -lboost_system -lboost_filesystem -lgl_framework -lcvsba -lvtkCommonCore -lpcl_common -lpcl_kdtree\
+		   -lpcl_octree -lpcl_search -lpcl_recognition -lvtkCommonDataModel -lvtkCommonMath -lvtkRenderingCore\
 		   -lqhull -lpcl_surface -lpcl_sample_consensus -lpcl_io -lpcl_filters -lpcl_features -lpcl_keypoints\
-		    -lpcl_registration -lpcl_segmentation -lpcl_recognition -lpcl_visualization -lpcl_people -lpcl_outofcore\
+		    -lpcl_registration -lpcl_segmentation  -lpcl_visualization -lpcl_people -lpcl_outofcore\
 			 -lpcl_tracking 
 
 
