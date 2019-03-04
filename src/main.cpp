@@ -13,6 +13,12 @@
 #include <glm/gtx/string_cast.hpp>
 #include <nlohmann/json.hpp>
 
+#include <pcl/common/common_headers.h>
+#include <pcl/io/pcd_io.h>
+#include <pcl/point_types.h>
+#include <pcl/point_cloud.h>
+#include <pcl/visualization/pcl_visualizer.h>
+
 #include "../include/point2fCompare.hpp"
 #include "../include/image_data.hpp"
 #include "../include/render_environment.hpp"
@@ -41,7 +47,7 @@ string DATASET_DIR = "";
 cv::Mat cameraIntrinsic;    //Assume all camera intrinsics are equal for now.
 cv::Mat initialPose = cv::Mat::eye(3, 4, CV_64F);
 
-auto oldTime = chrono::steady_clock::now(), newTime = chrono::steady_clock::now();
+auto oldTime = std::chrono::steady_clock::now(), newTime = std::chrono::steady_clock::now();
 double deltaT;
 
 vector<ImageData*> images;
@@ -457,8 +463,8 @@ int main(int argc, const char* argv[]) {
 
     while (true) {  //TODO: Write proper update & exit logic.
 		oldTime = newTime;
-    	newTime = chrono::steady_clock::now();
-		deltaT = chrono::duration_cast<chrono::milliseconds>(newTime - oldTime).count();
+    	newTime = std::chrono::steady_clock::now();
+		deltaT = std::chrono::duration_cast<std::chrono::milliseconds>(newTime - oldTime).count();
 
         renderer->update(deltaT);
     }
