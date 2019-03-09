@@ -18,6 +18,15 @@
 #include <pcl/point_types.h>
 #include <pcl/point_cloud.h>
 #include <pcl/visualization/pcl_visualizer.h>
+#include <pcl/search/kdtree.h>
+#include <pcl/features/normal_3d_omp.h>
+#include <pcl/point_types.h>
+#include <pcl/surface/mls.h>
+#include <pcl/kdtree/kdtree_flann.h>
+#include <pcl/features/normal_3d.h>
+#include <pcl/surface/gp3.h>
+#include <pcl/surface/poisson.h>
+#include <pcl/filters/passthrough.h>
 
 #include "../include/point2fCompare.hpp"
 #include "../include/image_data.hpp"
@@ -29,37 +38,42 @@ using namespace std;
 using namespace boost;
 using json = nlohmann::json;
 
+/*  PROGRAM SETTINGS    */  
 vector<string> acceptedExtensions = {".png", ".jpg", ".PNG", ".JPG"};
-
 int IMAGE_DOWNSCALE_FACTOR = -1, MIN_GUESSES_COUNT = -1, IMAGES_TO_PROCESS = -1;
 double FOCAL_LENGTH = -1;
 float OPENGL_SCALE_FACTOR = -1.0f;
 bool SHOW_MATCHES = false;
 cv::Mat DISTORTION_COEFFS;
 string DATASET_DIR = "";
-//focal_pixel = (focal_mm / sensor_width_mm) * image_width_in_pixels
-//4308 Desk
-//9318.70967742 Doll
-//3310.4 Dino
-//851.01 synthetic1_images
-//907.32 Flowerpot
-
-cv::Mat cameraIntrinsic;    //Assume all camera intrinsics are equal for now.
-cv::Mat initialPose = cv::Mat::eye(3, 4, CV_64F);
 
 auto oldTime = std::chrono::steady_clock::now(), newTime = std::chrono::steady_clock::now();
 double deltaT;
+
+/*  IMAGE VARIABLES */
+cv::Mat cameraIntrinsic;    //Assume all camera intrinsics are equal for now.
+cv::Mat initialPose = cv::Mat::eye(3, 4, CV_64F);
 vector<ImageData*> images;
+
+/*  INTERMEDIATE DATASTRUCTURES */
 map<cv::Point2f, int> previousPairImage2FeaturesToPoints3D; 
 //A list of a list of guesses for each 3d Point. Each list gets averaged out to a single 3D point in points3D.
 vector<vector<cv::Point3f>> points3DGuesses, points3DColours;
-vector<glm::vec3> points3D, pointColours, cameras3D, cameraColours;
+
+/*  SBA VARIABLES    */
+//For each image, is each 3D point represented by a 2D image feature. 1 if yes, 0 if not.  
+vector<vector<int>> visibility;  
 //List of a list of each images' detected features. This is not sparse; imagePoints[0][1] does not have to be equal to imagePoints[1][1] even if they do have a match!
-vector<vector<cv::Point2f>> imagePoints;    
-vector<vector<int>> visibility;  //for each image, is each 3D point represented by a 2D image feature. 1 if yes, 0 if not.
-vector<cv::Mat> cameraMatrix;  //The intrinsic matrix for each camera.
+vector<vector<cv::Point2f>> imagePoints;  
+//The intrinsic matrix for each camera.
+vector<cv::Mat> cameraMatrix;  
 vector<cv::Mat> cameraTransforms;
-glm::vec3 pointAverage; //  //Center the reconstruction in the scene using this.
+//Center the reconstruction in the scene using this.
+glm::vec3 pointAverage;
+
+/*  FINAL STRUCTURES & PCL VIEWER   */
+vector<glm::vec3> points3D, pointColours, cameras3D, cameraColours;
+pcl::visualization::PCLVisualizer viewer("Viewer");
 
 
 void fromCV2GLM(const cv::Mat& cvmat, glm::mat3* glmmat) {
@@ -83,34 +97,7 @@ void fromCV2GLM(const cv::Mat& cvmat, glm::mat4* glmmat) {
     memcpy(glm::value_ptr(*glmmat), cvmat32.data, 16 * sizeof(float));
 }
 
-void runSBA() {
-        // if (imageSets.size() > 1) { //Only run if images > 2
-        //     // run sba optimization
-        //     try {
-        //         sba.run( points3D, imagePoints, visibility, cameraMatrix, cameraRotations, cameraTranslations, distortionCoeffs);
-        //     } catch (cv::Exception) {
-        //     }
-
-        //         cout << "relative translation after BA: " << imagePair->relativeTranslation << endl;
-        //         cout << "image1->worldTranslation after BA" << imagePair->image1->worldTranslation << endl;
-        //         cout << "image2->worldTranslation after BA" << imagePair->image2->worldTranslation << endl;
-        // }
-}
-
-void setupSBA() {
-    // cvsba::Sba sba;
-    // cv::TermCriteria criteria(CV_TERMCRIT_ITER + CV_TERMCRIT_EPS, 150, 1e-10);
-    // cvsba::Sba::Params params;
-    // params.iterations = 150;
-    // params.type = cvsba::Sba::MOTIONSTRUCTURE;
-    // params.minError = 1e-10;
-    // params.fixedIntrinsics = 5;
-    // params.fixedDistortion = 5;
-    // params.verbose = false;
-    // sba.setParams(params);
-}
-
-void LoadSettings() {
+void loadSettings() {
     stringstream settingsPath;
     settingsPath << DATASET_DIR << "/settings.json";
 
@@ -151,6 +138,7 @@ bool loadImagesAndDetectFeatures() {
     copy_if(filesystem::directory_iterator(DATASET_DIR), filesystem::directory_iterator(), back_inserter(imagePaths), [&](filesystem::path path){
         return find(acceptedExtensions.begin(), acceptedExtensions.end(), path.extension()) != acceptedExtensions.end();
     });
+
     sort(imagePaths.begin(), imagePaths.end());   //Sort, since directory iteration is not ordered on some file systems
 
     if (imagePaths.size() == 0) {
@@ -165,6 +153,7 @@ bool loadImagesAndDetectFeatures() {
 
         cv::resize(image, image, image.size()/IMAGE_DOWNSCALE_FACTOR);
 
+        //Setup the Intrinsic Matrix the first time round.
         if (images.size() == 0) {
             setupIntrinsicMatrix(image.size().width, image.size().height);
         }
@@ -290,6 +279,7 @@ void matchFeatures(int image1Index, int image2Index) {
     // resize(img_matches, img_matches, img_matches.size()/2);
     //Show detected matches in an image viewer for debug purposes. 
         if (SHOW_MATCHES) {
+            cv::resize(img_matches, img_matches, img_matches.size()/8);
             cv::imshow("Good Matches", img_matches);
             cv::waitKey(0); //Wait for a key to be hit to exit viewer.
         }
@@ -362,66 +352,74 @@ void matchFeatures(int image1Index, int image2Index) {
 
 
     // Put points into final structure.
-    map<cv::Point2f, int> currentPairImage2FeaturesToPoints3D;
-    for (int i = 0; i < currentPair3DGuesses.size(); i++) {
-        auto corresponding3DPoint = previousPairImage2FeaturesToPoints3D.find(filteredMatchesP1[i]);
+        map<cv::Point2f, int> currentPairImage2FeaturesToPoints3D;
+        for (int i = 0; i < currentPair3DGuesses.size(); i++) {
+            auto corresponding3DPoint = previousPairImage2FeaturesToPoints3D.find(filteredMatchesP1[i]);
 
-        cv::Point3f mixedColour;
-        //Average colour
-        cv::Vec3b col1 = image1->image.at<cv::Vec3b>(filteredMatchesP1[i].y, filteredMatchesP1[i].x),
-                    col2 = image2->image.at<cv::Vec3b>(filteredMatchesP2[i].y, filteredMatchesP2[i].x);
-        
-        mixedColour += cv::Point3f(col1.val[0], col1.val[1], col1.val[2]);
-        mixedColour += cv::Point3f(col2.val[0], col2.val[1], col2.val[2]);
-        mixedColour /= 2;
+            cv::Point3f mixedColour;
+            //Average colour
+            cv::Vec3b col1 = image1->image.at<cv::Vec3b>(filteredMatchesP1[i].y, filteredMatchesP1[i].x),
+                        col2 = image2->image.at<cv::Vec3b>(filteredMatchesP2[i].y, filteredMatchesP2[i].x);
+            
+            mixedColour += cv::Point3f(col1.val[0], col1.val[1], col1.val[2]);
+            mixedColour += cv::Point3f(col2.val[0], col2.val[1], col2.val[2]);
+            mixedColour /= 2;
 
-        if (corresponding3DPoint != previousPairImage2FeaturesToPoints3D.end()) {
-            // int point3DGuessIndex = std::distance(points3DGuesses.begin(), points3DGuesses[corresponding3DPoint->second].back);
-            points3DGuesses[corresponding3DPoint->second].push_back(currentPair3DGuesses[i]);
-            points3DColours[corresponding3DPoint->second].push_back(mixedColour);
+            if (corresponding3DPoint != previousPairImage2FeaturesToPoints3D.end()) {
+                // int point3DGuessIndex = std::distance(points3DGuesses.begin(), points3DGuesses[corresponding3DPoint->second].back);
+                points3DGuesses[corresponding3DPoint->second].push_back(currentPair3DGuesses[i]);
+                points3DColours[corresponding3DPoint->second].push_back(mixedColour);
 
-            //Create a binding from the image2 point to the index of the 3D guess list.                
-            currentPairImage2FeaturesToPoints3D[filteredMatchesP2[i]] = corresponding3DPoint->second;
-        } else { //New point
-            //Create a new list of 3D point guesses if we're on a new point.
-            vector<cv::Point3f> newGuessList;
-            newGuessList.push_back(currentPair3DGuesses[i]);
-            points3DGuesses.push_back(newGuessList);
+                //Create a binding from the image2 point to the index of the 3D guess list.                
+                currentPairImage2FeaturesToPoints3D[filteredMatchesP2[i]] = corresponding3DPoint->second;
+            } else { //New point
+                //Create a new list of 3D point guesses if we're on a new point.
+                vector<cv::Point3f> newGuessList;
+                newGuessList.push_back(currentPair3DGuesses[i]);
+                points3DGuesses.push_back(newGuessList);
 
-            vector<cv::Point3f> newColourList;
-            newColourList.push_back(mixedColour);
-            points3DColours.push_back(newColourList);
+                vector<cv::Point3f> newColourList;
+                newColourList.push_back(mixedColour);
+                points3DColours.push_back(newColourList);
 
-            //Create a binding from the image2 point to the index of the 3D guess list.
-            int new3DGuessindex = points3DGuesses.size()-1;
-            currentPairImage2FeaturesToPoints3D[filteredMatchesP2[i]] = new3DGuessindex;
-        }   
-    }
+                //Create a binding from the image2 point to the index of the 3D guess list.
+                int new3DGuessindex = points3DGuesses.size()-1;
+                currentPairImage2FeaturesToPoints3D[filteredMatchesP2[i]] = new3DGuessindex;
+            }   
+        }
 
-    previousPairImage2FeaturesToPoints3D = currentPairImage2FeaturesToPoints3D;
-    currentPairImage2FeaturesToPoints3D.clear();
+        previousPairImage2FeaturesToPoints3D = currentPairImage2FeaturesToPoints3D;
+        currentPairImage2FeaturesToPoints3D.clear();
 }
 
-int main(int argc, const char* argv[]) {
-    cout << "Launching Program" << endl;
+void runSBA() {
+        // if (imageSets.size() > 1) { //Only run if images > 2
+        //     // run sba optimization
+        //     try {
+        //         sba.run( points3D, imagePoints, visibility, cameraMatrix, cameraRotations, cameraTranslations, distortionCoeffs);
+        //     } catch (cv::Exception) {
+        //     }
 
-    DATASET_DIR = filesystem::canonical(argv[1]).string();
-	srand (time(NULL));
+        //         cout << "relative translation after BA: " << imagePair->relativeTranslation << endl;
+        //         cout << "image1->worldTranslation after BA" << imagePair->image1->worldTranslation << endl;
+        //         cout << "image2->worldTranslation after BA" << imagePair->image2->worldTranslation << endl;
+        // }
+}
 
-    LoadSettings();
-    setupSBA();
+void setupSBA() {
+    // cvsba::Sba sba;
+    // cv::TermCriteria criteria(CV_TERMCRIT_ITER + CV_TERMCRIT_EPS, 150, 1e-10);
+    // cvsba::Sba::Params params;
+    // params.iterations = 150;
+    // params.type = cvsba::Sba::MOTIONSTRUCTURE;
+    // params.minError = 1e-10;
+    // params.fixedIntrinsics = 5;
+    // params.fixedDistortion = 5;
+    // params.verbose = false;
+    // sba.setParams(params);
+}
 
-    if (!loadImagesAndDetectFeatures()) return -1;
-
-    //Push back initial camera position.
-        cameras3D.push_back(glm::vec3(0.0f));
-        cameraColours.push_back(glm::vec3(1.0f, 1.0f, 1.0f));
-
-    //Match features between all images
-    for (int i = 0; i < std::min((int) images.size(), IMAGES_TO_PROCESS) - 1; i++) {
-        matchFeatures(i, i+1);
-    }
-
+void averagePoints() {
     for (int i = 0; i < points3DGuesses.size(); i++) {
         vector<cv::Point3f> currentPointGuesses = points3DGuesses[i], currentPointColours = points3DColours[i];
         cv::Point3f averagedPoint, averagedColour;
@@ -439,6 +437,127 @@ int main(int argc, const char* argv[]) {
             pointColours.push_back(glm::vec3(averagedColour.z/255.0f, averagedColour.y/255.0f, averagedColour.x/255.0f));
         }
     }
+}
+
+void setupRenderer() {
+    viewer.initCameraParameters();
+    viewer.setBackgroundColor(0.1f, 0.1f, 0.1f);
+
+    pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloudRGB (new pcl::PointCloud<pcl::PointXYZRGB>);
+    pcl::PointCloud<pcl::PointXYZ>::Ptr cloud (new pcl::PointCloud<pcl::PointXYZ>);
+
+	cloudRGB->points.resize(points3D.size());
+	cloud->points.resize(points3D.size());
+
+    for(int i = 0; i < points3D.size(); i++) {
+        pcl::PointXYZRGB &rgbPoint = cloudRGB->points[i];
+        pcl::PointXYZ &point = cloud->points[i];
+        
+        point.x = points3D[i].x;
+        point.y = points3D[i].y;
+        point.z = points3D[i].z;
+
+        rgbPoint.x = points3D[i].x;
+        rgbPoint.y = points3D[i].y;
+        rgbPoint.z = points3D[i].z;
+        rgbPoint.r = pointColours[i].x * 255.0f;
+        rgbPoint.g = pointColours[i].y * 255.0f;
+        rgbPoint.b = pointColours[i].z * 255.0f;
+    }
+
+    // pcl::PointCloud<pcl::PointXYZ>::Ptr filtered(new pcl::PointCloud<pcl::PointXYZ>()); 
+    // pcl::PassThrough<pcl::PointXYZ> filter; 
+
+    // filter.setInputCloud(cloud); 
+    // filter.filter(*filtered); 
+    // cerr << "passthrough filter complete" << endl; 
+
+    // cerr << "begin normal estimation" << endl; 
+    // pcl::NormalEstimationOMP<pcl::PointXYZ, pcl::Normal> ne;
+    // ne.setNumberOfThreads(4);
+    // ne.setInputCloud(filtered);
+    // ne.setRadiusSearch(0.1);
+    // Eigen::Vector4f centroid;
+    // compute3DCentroid(*filtered, centroid);
+    // ne.setViewPoint(centroid[0], centroid[1], centroid[2]);
+
+    // pcl::PointCloud<pcl::Normal>::Ptr cloud_normals(new pcl::PointCloud<pcl::Normal>());
+    // ne.compute(*cloud_normals);
+    // cerr << "Normal estimation complete" << endl;
+    // cerr << "Reverse normals' direction" << endl;
+
+    // for (size_t i = 0; i < cloud_normals->size(); ++i) { 
+    //     cloud_normals->points[i].normal_x *= -1; 
+    //     cloud_normals->points[i].normal_y *= -1; 
+    //     cloud_normals->points[i].normal_z *= -1; 
+    // } 
+
+    // cerr << "combine points and normals" << endl; 
+    // pcl::PointCloud<pcl::PointNormal>::Ptr cloud_smoothed_normals(new pcl::PointCloud<pcl::PointNormal>()); 
+    // concatenateFields(*filtered, *cloud_normals, *cloud_smoothed_normals); 
+
+    // // Initialize objects
+    // pcl::GreedyProjectionTriangulation<pcl::PointNormal> gp3;
+    // pcl::PolygonMesh triangles;
+
+    // // Set the maximum distance between connected points (maximum edge length)
+    // gp3.setSearchRadius (0.5);
+
+    // // Set typical values for the parameters
+    // gp3.setMu (2.5);
+    // gp3.setMaximumNearestNeighbors (1000);
+    // gp3.setMaximumSurfaceAngle(M_PI/4); // 45 degrees
+    // gp3.setMinimumAngle(0); // 10 degrees
+    // gp3.setMaximumAngle(2*M_PI/3); // 120 degrees
+    // gp3.setNormalConsistency(false);
+
+    //  // Create search tree*
+    // pcl::search::KdTree<pcl::PointNormal>::Ptr tree2 (new pcl::search::KdTree<pcl::PointNormal>);
+    // tree2->setInputCloud(cloud_smoothed_normals);
+
+    // // Get result
+    // gp3.setInputCloud(cloud_smoothed_normals);
+    // gp3.setSearchMethod (tree2);
+    // gp3.reconstruct (triangles);
+    // viewer.addPolygonMesh(triangles, "meshes", 0);
+
+    viewer.addPointCloud(cloudRGB, "Point Cloud Render");
+    // viewer.addPointCloudNormals<pcl::PointXYZRGB, pcl::Normal> (cloudRGB, cloud_normals, 1, 0.1f, "Normals");
+
+    viewer.setPointCloudRenderingProperties(pcl::visualization::PCL_VISUALIZER_POINT_SIZE, 3, "Point Cloud Render");
+
+
+    // viewer.addCoordinateSystem(1.0);
+
+    // renderEnvironment *renderer = new renderEnvironment(0.4f, 0.2f, 0.2f, 0.0f, 0.0f, 0.0f);
+    // GLuint basicShader = Shader::LoadShaders("./bin/shadercam_poses/basic.vertshader", "./bin/shaders/basic.fragshader");
+    // renderer->addRenderable(new Renderable(basicShader, cameras3D, cameraColours, GL_POINTS));
+	// renderer->addRenderable(new Renderable(basicShader, points3D, pointColours, GL_POINTS));
+
+    cout << "Initialised renderer" << endl;        	
+}
+
+int main(int argc, const char* argv[]) {
+    cout << "Launching Program" << endl;
+
+    DATASET_DIR = filesystem::canonical(argv[1]).string();
+	srand (time(NULL));
+
+    loadSettings();
+    setupSBA();
+
+    if (!loadImagesAndDetectFeatures()) return -1;
+
+    //Push back initial camera position.
+        cameras3D.push_back(glm::vec3(0.0f));
+        cameraColours.push_back(glm::vec3(1.0f, 1.0f, 1.0f));
+
+    //Match features between all images
+    for (int i = 0; i < std::min((int) images.size(), IMAGES_TO_PROCESS) - 1; i++) {
+        matchFeatures(i, i+1);
+    }
+
+    averagePoints();
 
     //Center 3d point cloud in scene
     pointAverage /= points3D.size();
@@ -451,46 +570,18 @@ int main(int argc, const char* argv[]) {
         cameras3D[i] -= pointAverage;
     }
 
-    // renderEnvironment *renderer = new renderEnvironment(0.4f, 0.2f, 0.2f, 0.0f, 0.0f, 0.0f);
+    setupRenderer();
 
-    // cout << "Initialised renderer" << endl;
-        	
-    // GLuint basicShader = Shader::LoadShaders("./bin/shaders/basic.vertshader", "./bin/shaders/basic.fragshader");
-    // // renderer->addRenderable(new Renderable(basicShader, cameras3D, cameraColours, GL_POINTS));
-	// renderer->addRenderable(new Renderable(basicShader, points3D, pointColours, GL_POINTS));
-    pcl::visualization::PCLVisualizer viewer("Viewer");
-    viewer.setBackgroundColor (200, 200, 200);
-    viewer.initCameraParameters ();
-
-    pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud (new pcl::PointCloud<pcl::PointXYZRGB>);
-	cloud->points.resize (points3D.size());
-
-    for(int i = 0; i < points3D.size(); i++) {
-        pcl::PointXYZRGB &point = cloud->points[i];
-        point.x = points3D[i].x;
-        point.y = points3D[i].y;
-        point.z = points3D[i].z;
-        point.r = pointColours[i].x * 255.0f;
-        point.g = pointColours[i].y * 255.0f;
-        point.b = pointColours[i].z * 255.0f;
-    }
-
-    viewer.addPointCloud(cloud, "Triangulated Point Cloud");
-    viewer.setPointCloudRenderingProperties (pcl::visualization::PCL_VISUALIZER_POINT_SIZE, 3, "Triangulated Point Cloud");
-    viewer.addCoordinateSystem (1.0);
-
-    // viewer.addCoordinateSystem(1.0, cameraMatrix[1], "2nd cam");
 
     while (!viewer.wasStopped ()) {
         viewer.spin();
     }
 
-    while (true) {  //TODO: Write proper update & exit logic.
-		oldTime = newTime;
-    	newTime = std::chrono::steady_clock::now();
-		deltaT = std::chrono::duration_cast<std::chrono::milliseconds>(newTime - oldTime).count();
-
-        // renderer->update(deltaT);
-    }
+    // while (true) {  //TODO: Write proper update & exit logic.
+	// 	oldTime = newTime;
+    // 	newTime = std::chrono::steady_clock::now();
+	// 	deltaT = std::chrono::duration_cast<std::chrono::milliseconds>(newTime - oldTime).count();
+    //     renderer->update(deltaT);
+    // }
     return 0;
 }

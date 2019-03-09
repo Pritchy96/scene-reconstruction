@@ -32,6 +32,7 @@ void ImageData::SetupAndDetectKeyPoints() {
 
     //Detect features in the image.
     cv::Ptr<cv::FeatureDetector> detector = cv::AKAZE::create();
+    // cv::Ptr<cv::FeatureDetector> detector = cv::ORB::create(100000);
     detector->detectAndCompute(image, cv::Mat(), image_keypoints, image_descriptors);
 
     if (DEBUG_LOG) {

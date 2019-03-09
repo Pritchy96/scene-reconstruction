@@ -21,7 +21,7 @@ LIBS := -lGL -lGLU -lglfw -lX11 -lXxf86vm -lXrandr -lpthread -lXi -lGLEW -lopenc
 		   -lpcl_octree -lpcl_search -lpcl_recognition -lvtkCommonDataModel -lvtkCommonMath -lvtkRenderingCore\
 		   -lqhull -lpcl_surface -lpcl_sample_consensus -lpcl_io -lpcl_filters -lpcl_features -lpcl_keypoints\
 		    -lpcl_registration -lpcl_segmentation  -lpcl_visualization -lpcl_people -lpcl_outofcore\
-			 -lpcl_tracking 
+			 -lpcl_tracking -lvtkRenderingLOD
 
 
 MAINS := $(BUILD_DIR)/main.o $(TEST_DIR)/gl_framework_test.o
