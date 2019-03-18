@@ -428,6 +428,7 @@ void averagePoints() {
                 averagedPoint += currentPointGuesses[j];
                 averagedColour += currentPointColours[j];
             }
+
             averagedPoint /= ((float) currentPointGuesses.size());
             averagedPoint *= OPENGL_SCALE_FACTOR; //Scale up
             averagedColour /= ((float) currentPointColours.size());
@@ -437,6 +438,82 @@ void averagePoints() {
             pointColours.push_back(glm::vec3(averagedColour.z/255.0f, averagedColour.y/255.0f, averagedColour.x/255.0f));
         }
     }
+}
+
+void fillInPoints() {
+    int width = 0, height = 0, xOrigin = 0, yOrigin = 0;
+    float GRID_SCALE = 5.0f;
+    for (int i = 0; i < points3D.size(); i++) {
+        glm::vec3 point = points3D[i];
+        int gridx = (int) (point.x * GRID_SCALE);
+        int gridy = (int) (point.y * GRID_SCALE);
+
+        if (gridx > width) width = gridx;
+        if (gridy > height) height = gridy;
+        if (gridx < xOrigin) xOrigin = gridx;
+        if (gridy < yOrigin) yOrigin = gridy;
+    }
+
+    width = width - xOrigin;
+    height = height - yOrigin;
+
+    //Calloc fills with zeros, neepowd to alloc memory so it goes on heap rather than stack (too big)
+    float *grid = (float*) calloc(width * height, sizeof(float));
+
+    for (int i = 0; i < points3D.size(); i++) {
+        glm::vec3 point = points3D[i];
+        int gridx = ((int)(point.x * GRID_SCALE)) - xOrigin;
+        int gridy = ((int)(point.y * GRID_SCALE)) - yOrigin;
+
+        grid[(gridy*width) + gridx] = point.z;
+    }
+
+    for (int y = 0; y < height; y++) {
+        for (int x = 0; x < width; x++) {
+            int i = (y * width) + x;
+            if (grid[i] == 0) { //We need to interpolate a position if z position of (x, y) = 0.
+                // int upIndex = i - width, leftIndex = i - 1, rightIndex = i + 1, downIndex = i + width;
+
+                float distanceSquared = 0.0f, weighting = 0.0f, interpolatedZ = 0.0f, interpolatedR = 0.0f, interpolatedG = 0.0f, interpolatedB = 0.0f;
+
+                for (int j = 0; j < points3D.size(); j++) {
+                    glm::vec3 point = points3D[j];
+                    glm::vec3 pointCol = pointColours[i];
+
+                    distanceSquared = pow(((x+xOrigin)/GRID_SCALE) - point.x, 8.0) + pow(((y+yOrigin)/GRID_SCALE) - point.y, 8.0);
+                    weighting += 1.0f / distanceSquared;
+
+                    interpolatedZ += point.z / distanceSquared;     
+                    interpolatedR += pointCol.r / distanceSquared;     
+                    interpolatedG += pointCol.g / distanceSquared;     
+                    interpolatedB += pointCol.b / distanceSquared;     
+                }
+
+                float z = interpolatedZ / weighting;
+                float r = interpolatedR / weighting;
+                float g = interpolatedG / weighting;
+                float b = interpolatedB / weighting;
+
+                // grid[i] = z;
+                points3D.push_back(glm::vec3((float)(x + xOrigin)/GRID_SCALE, (float)(y + yOrigin)/GRID_SCALE, z));
+                pointColours.push_back(glm::vec3(b, g, r));
+            }
+        }
+    }
+
+    free(grid);
+}
+
+//Returns height
+float interpolatePoint(float* grid, int width, int height, int index) {
+    /*
+        If (valid point) {
+            interpolatedHeight += point.height;
+            pointCount++;
+        }
+
+        return interpolatedHeight/pointcount;
+    */
 }
 
 void setupRenderer() {
@@ -518,7 +595,7 @@ void setupRenderer() {
     // // Get result
     // gp3.setInputCloud(cloud_smoothed_normals);
     // gp3.setSearchMethod (tree2);
-    // gp3.reconstruct (triangles);
+    // gp3.reconstruct (triangles)5;
     // viewer.addPolygonMesh(triangles, "meshes", 0);
 
     viewer.addPointCloud(cloudRGB, "Point Cloud Render");
@@ -559,11 +636,14 @@ int main(int argc, const char* argv[]) {
 
     averagePoints();
 
+    fillInPoints();
+
     //Center 3d point cloud in scene
     pointAverage /= points3D.size();
     for (int i = 0; i < points3D.size(); i++) {
         points3D[i] -= pointAverage;
     }
+    
 
     //Center camera 3d positions in scene
     for (int i = 0; i < cameras3D.size(); i++) {
